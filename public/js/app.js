@@ -664,9 +664,14 @@
             <p class="text-[11px] text-slate-500">${company.sector} / ${company.market}</p>
           </div>
         </div>
-        <button type="button" id="close-company-detail" class="text-slate-400 hover:text-slate-600 shrink-0" title="閉じる">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button type="button" id="hide-company-detail" class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-600 transition">
+            <i class="fa-solid fa-eye-slash"></i><span class="hidden sm:inline">この銘柄を非表示</span>
+          </button>
+          <button type="button" id="close-company-detail" class="text-slate-400 hover:text-slate-600 shrink-0" title="閉じる">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
       </div>
       ${companySummaryHtml(company)}`;
 
@@ -674,6 +679,7 @@
       panel.innerHTML = head +
         '<p class="px-4 py-6 text-xs text-slate-400 text-center">この企業には表示できる財務データがありません。</p>';
       panel.classList.remove('hidden');
+      bindCompanyDetailHeaderEvents(panel, company);
       return;
     }
 
@@ -740,7 +746,12 @@
         </p>
       </div>`;
     panel.classList.remove('hidden');
+    bindCompanyDetailHeaderEvents(panel, company);
+  }
+
+  function bindCompanyDetailHeaderEvents(panel, company) {
     panel.querySelector('#close-company-detail').addEventListener('click', closeCompanyDetail);
+    panel.querySelector('#hide-company-detail').addEventListener('click', () => hideCompany(company));
   }
 
   function esc(s) {
@@ -768,6 +779,17 @@
     document.getElementById('hide-confirm-text').textContent =
       `「${company.name}」を非表示にしますか？`;
     showModal('hide-confirm-modal');
+  }
+
+  // 球の右クリックと、企業詳細パネルの「この銘柄を非表示」ボタンの両方から呼ぶ
+  // 共通の非表示処理。
+  function hideCompany(company) {
+    askHideConfirm(company, () => {
+      state.hiddenCodes.add(company.code);
+      // 非表示にした企業の財務情報を開いたままにしない。
+      if (selectedCompanyCode === company.code) closeCompanyDetail();
+      refreshChart();
+    });
   }
 
   function closeHideConfirm() {
@@ -865,14 +887,7 @@
     // 球体を右クリック→確認の上でその企業をチャートから非表示にする。
     // window.confirm()はブラウザによってはマウスイベント処理中の呼び出しが
     // 抑制されることがあるため、自前のモーダルで確認する。
-    ChartModule.setHideRequestHandler((company) => {
-      askHideConfirm(company, () => {
-        state.hiddenCodes.add(company.code);
-        // 非表示にした企業の財務情報を開いたままにしない。
-        if (selectedCompanyCode === company.code) closeCompanyDetail();
-        refreshChart();
-      });
-    });
+    ChartModule.setHideRequestHandler(hideCompany);
 
     // 球体を左クリック→その企業の主要財務情報をチャート下のパネルに表示する。
     ChartModule.setSelectRequestHandler(showCompanyDetail);

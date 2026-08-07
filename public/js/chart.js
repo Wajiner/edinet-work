@@ -221,9 +221,9 @@ const ChartModule = (function () {
       // テキストがグラフに重なったまま残る。先に中身を空にしておく。
       containerEl.innerHTML = '';
       containerEl._hideHandlerAttached = false; // newPlot後は要素が作り直されるため再登録する
-      Plotly.newPlot(containerId, [trace, originTrace], layout, { responsive: true, displaylogo: false });
+      Plotly.newPlot(containerId, [trace, originTrace], layout, { responsive: true, displaylogo: false, displayModeBar: false });
     } else {
-      Plotly.react(containerId, [trace, originTrace], layout, { responsive: true, displaylogo: false });
+      Plotly.react(containerId, [trace, originTrace], layout, { responsive: true, displaylogo: false, displayModeBar: false });
     }
     attachInteractionHandlers(containerEl);
     return points;
