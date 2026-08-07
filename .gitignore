@@ -9,8 +9,9 @@ venv/
 .env
 .env.local
 
-# EDINET DB API キャッシュ（各PCで独立生成）
-edinetdb_cache/raw/
+# EDINET DB API キャッシュ
+# raw/ と progress.json は複数PC間で共有するため追跡する(合計でも数百MB程度)
+# daily_usage.jsonのみ各PCローカルの日次カウンタなので除外
 edinetdb_cache/daily_usage.json
 
 # ローカル設定
