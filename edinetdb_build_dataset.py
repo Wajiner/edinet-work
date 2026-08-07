@@ -3,14 +3,16 @@
 # --------------------------------------------------------------------------
 # edinetdb_bulk_download.py が edinetdb_cache/raw/ に保存した生レスポンスから、
 # サイトが読み込める形式（{formatVersion, fiscalYears, meta, companies:[...]}）
-# のJSONを組み立てる。APIを一切呼ばないため、フィールドマッピングのロジックを
-# 直しても再ダウンロードせずに何度でも無料で再実行できる。
+# のJSONを、市場区分(東証プライム/スタンダード/グロース)ごとに分割して
+# data/ 以下に書き出す。サイトは起動時に対象市場のファイルだけをHTTPで
+# fetchするため、全社まとめた1ファイルより初回表示が速い。
+# APIを一切呼ばないため、フィールドマッピングのロジックを直しても
+# 再ダウンロードせずに何度でも無料で再実行できる。
 #
 # 実行方法:
 #   python edinetdb_build_dataset.py
 #
-# 出力したJSONは、サイトの「データ管理」モーダル→「JSONを読み込む」から
-# そのままアップロードできる。
+# 出力した data/*.json はサイトが直接fetchするため、git commitしてデプロイに含める。
 # ==========================================================================
 
 import json
@@ -25,7 +27,16 @@ CACHE_DIR = os.path.join(BASE_DIR, "edinetdb_cache")
 RAW_DIR = os.path.join(CACHE_DIR, "raw")
 MASTER_FILE = os.path.join(CACHE_DIR, "companies_master.json")
 
-OUTPUT_FILENAME = os.path.join(BASE_DIR, "edinetdb_dataset_universe_prime.json")
+DATA_DIR = os.path.join(BASE_DIR, "public", "data")
+MANIFEST_FILENAME = os.path.join(DATA_DIR, "manifest.json")
+
+# 市場区分名 -> 出力ファイル名（サイトのMARKET_OPTIONSと対応）。
+# ここに無い市場区分（TOKYO PRO MARKET等）は対象外として出力しない。
+MARKET_SLUGS = {
+    "東証プライム": "prime",
+    "東証スタンダード": "standard",
+    "東証グロース": "growth",
+}
 
 # 保持する期間スロット数。/ratios が最大15年分を返すためこれに合わせる
 # （/financials は6年分だが、periodLabelsで会社ごとに実際の年数がわかる）。
@@ -37,10 +48,6 @@ def load_json(path):
         return None
     with open(path, encoding="utf-8") as f:
         return json.load(f)
-
-
-def is_number(v):
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
 def build_company_record(fin_payload, ratios_payload, earnings_payload, n_slots=N_SLOTS):
@@ -125,9 +132,6 @@ def build_company_record(fin_payload, ratios_payload, earnings_payload, n_slots=
     op_income_cagr_3y = [None] * n_slots
     net_income_cagr_3y = [None] * n_slots
 
-    raw_financials = {}
-    raw_ratios = {}
-
     for i, y in enumerate(slot_years):
         if y is None:
             continue
@@ -135,9 +139,6 @@ def build_company_record(fin_payload, ratios_payload, earnings_payload, n_slots=
         rat = ratios_by_year.get(y)
 
         if fin:
-            for k, v in fin.items():
-                if is_number(v):
-                    raw_financials.setdefault(k, [None] * n_slots)[i] = v
             rev = fin.get("revenue")
             op = fin.get("operating_income")
             ni = fin.get("net_income")
@@ -169,9 +170,6 @@ def build_company_record(fin_payload, ratios_payload, earnings_payload, n_slots=
                 female_director_ratio[i] = fin["female_director_ratio"] * 100
 
         if rat:
-            for k, v in rat.items():
-                if is_number(v):
-                    raw_ratios.setdefault(k, [None] * n_slots)[i] = v
             if rat.get("per") is not None:
                 per[i] = rat["per"]
             if rat.get("pbr") is not None:
@@ -298,14 +296,16 @@ def build_company_record(fin_payload, ratios_payload, earnings_payload, n_slots=
         "rndRatio": rnd_ratio, "femaleDirectorRatio": female_director_ratio,
         "revenueCagr3y": revenue_cagr_3y, "opIncomeCagr3y": op_income_cagr_3y,
         "netIncomeCagr3y": net_income_cagr_3y,
-        "raw": {
-            "financials": raw_financials,
-            "ratios": raw_ratios,
-            "earningsLatest": latest_earnings,
-        },
     }
     matched = sum(1 for y in slot_years if y is not None)
     return matched, financials
+
+
+def atomic_write_json(path, payload):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, path)
 
 
 def main():
@@ -314,11 +314,19 @@ def main():
     with open(MASTER_FILE, encoding="utf-8") as f:
         master = json.load(f)
 
-    companies_out = []
+    # 市場区分ごとにバケツを分けて集計する。
+    companies_by_market = {market: [] for market in MARKET_SLUGS}
     skipped_no_data = 0
+    skipped_unknown_market = 0
     total_years_sum = 0
+    total_matched_companies = 0
 
     for entry in master["companies"]:
+        market = entry.get("market")
+        if market not in MARKET_SLUGS:
+            skipped_unknown_market += 1
+            continue
+
         ec = entry["edinetCode"]
         fin_payload = load_json(os.path.join(RAW_DIR, f"{ec}_financials.json"))
         ratios_payload = load_json(os.path.join(RAW_DIR, f"{ec}_ratios.json"))
@@ -336,9 +344,10 @@ def main():
             continue
 
         total_years_sum += matched
+        total_matched_companies += 1
         business_summary = ((profile_payload or {}).get("data") or {}).get("business_summary")
         ai_summary = (((analysis_payload or {}).get("data") or {}).get("ai_summary") or {}).get("text")
-        companies_out.append({
+        companies_by_market[market].append({
             "code": entry["code"], "name": entry["name"],
             "sector": entry["sector"], "market": entry["market"],
             "color": None, "financials": fin_data, "source": "edinetdb",
@@ -347,34 +356,49 @@ def main():
         })
 
     fiscal_years_placeholder = [f"{N_SLOTS - 1 - i}期前" for i in range(N_SLOTS - 1)] + ["最新期"]
+    generated_at = datetime.now(timezone.utc).isoformat()
 
-    payload = {
-        "formatVersion": 1,
-        "exportedAt": datetime.now(timezone.utc).isoformat(),
-        "fiscalYears": fiscal_years_placeholder,
-        "meta": {
-            "type": "edinetdb",
-            "downloadedAt": datetime.now(timezone.utc).isoformat(),
-            "markets": sorted({c["market"] for c in companies_out if c.get("market")}),
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+    manifest_markets = {}
+    for market, slug in MARKET_SLUGS.items():
+        companies_out = companies_by_market[market]
+        payload = {
+            "formatVersion": 1,
+            "exportedAt": generated_at,
+            "fiscalYears": fiscal_years_placeholder,
+            "meta": {
+                "type": "edinetdb",
+                "downloadedAt": generated_at,
+                "market": market,
+                "companyCount": len(companies_out),
+                "sourceMasterBuiltAt": master.get("builtAt"),
+            },
+            "companies": companies_out,
+        }
+        out_path = os.path.join(DATA_DIR, f"{slug}.json")
+        atomic_write_json(out_path, payload)
+        size_kb = os.path.getsize(out_path) / 1024
+        manifest_markets[market] = {
+            "file": f"{slug}.json",
             "companyCount": len(companies_out),
-            "skippedNoData": skipped_no_data,
-            "avgYearsPerCompany": round(total_years_sum / len(companies_out), 1) if companies_out else 0,
-            "sourceMasterBuiltAt": master.get("builtAt"),
-        },
-        "companies": companies_out,
+            "sizeKb": round(size_kb, 1),
+        }
+        print(f"{market}: {len(companies_out)}社 -> {out_path}（{size_kb:.0f}KB）")
+
+    manifest = {
+        "formatVersion": 1,
+        "generatedAt": generated_at,
+        "fiscalYears": fiscal_years_placeholder,
+        "markets": manifest_markets,
     }
+    atomic_write_json(MANIFEST_FILENAME, manifest)
 
-    tmp = OUTPUT_FILENAME + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
-    os.replace(tmp, OUTPUT_FILENAME)
-
-    size_mb = os.path.getsize(OUTPUT_FILENAME) / 1024 / 1024
-    print(f"{len(companies_out)}社を {OUTPUT_FILENAME} に書き出しました（{size_mb:.1f}MB）。")
+    print(f"\nmanifest.json を書き出しました: {MANIFEST_FILENAME}")
     print(f"データが無く除外した銘柄: {skipped_no_data}社")
-    if companies_out:
-        print(f"1社あたり平均{payload['meta']['avgYearsPerCompany']}期分のデータ")
-    print("\nサイトの「データ管理」モーダル→「JSONを読み込む」からアップロードしてください。")
+    print(f"対象市場区分外（プライム/スタンダード/グロース以外）: {skipped_unknown_market}社")
+    if total_matched_companies:
+        print(f"1社あたり平均{round(total_years_sum / total_matched_companies, 1)}期分のデータ")
 
 
 if __name__ == "__main__":
