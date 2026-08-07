@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://edinet-work.yozakuratann.workers.dev/sitemap.xml
