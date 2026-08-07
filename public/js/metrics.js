@@ -28,6 +28,18 @@ function pegRatio(per, growth) {
   return per / growth;
 }
 
+// 期末株価（基準株価）はEDINET DBから直接提供されないため、同DBがPER・PBR算出に
+// 使った株価をPER×EPS（またはPBR×BPS）から逆算して求める。両方欠けている期のみnull。
+function impliedSharePrice(f, i) {
+  const per = pickAt(f.per, i);
+  const eps = pickAt(f.eps, i);
+  if (per !== null && eps !== null) return per * eps;
+  const pbr = pickAt(f.pbr, i);
+  const bps = pickAt(f.bps, i);
+  if (pbr !== null && bps !== null) return pbr * bps;
+  return null;
+}
+
 const VARIANT_ACTUAL = 'actual';
 const VARIANT_FORECAST = 'forecast';
 
@@ -188,9 +200,9 @@ const METRIC_DEFS = {
     variants: { actual: { label: '実績', compute: (f, i) => pickAt(f.bps, i) } }
   },
   ref_price: {
-    label: '基準株価', unit: '円', scaleType: 'log',
-    hint: '各決算の発表日翌営業日の終値。PER・PBR・時価総額の算出にもこの株価を使っています。',
-    variants: { actual: { label: '実績', compute: (f, i) => pickAt(f.refPrice, i) } }
+    label: '期末株価（基準株価）', unit: '円', scaleType: 'log',
+    hint: 'EDINET DBはこの株価そのものを開示していないため、同DBが公表するPER・PBRとEPS・BPSから逆算した推定値です（PER×EPS、算出できない期のみPBR×BPSで代用）。丸め誤差により実際の株価と若干ずれる場合があります。',
+    variants: { actual: { label: '実績', compute: (f, i) => impliedSharePrice(f, i) } }
   },
   price_performance: {
     label: '株価パフォーマンス', unit: '%', scaleType: 'linear',
