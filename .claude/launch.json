@@ -4,8 +4,8 @@
     {
       "name": "jquants-site",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["serve_nocache.py", "8345"],
-      "port": 8345
+      "runtimeArgs": ["serve_nocache.py", "8346"],
+      "port": 8346
     }
   ]
 }
