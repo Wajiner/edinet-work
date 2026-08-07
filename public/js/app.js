@@ -668,14 +668,12 @@
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
-      ${companySummaryHtml(company)}
-      <div class="company-detail-overview"></div>`;
+      ${companySummaryHtml(company)}`;
 
     if (offsets.length === 0) {
       panel.innerHTML = head +
         '<p class="px-4 py-6 text-xs text-slate-400 text-center">この企業には表示できる財務データがありません。</p>';
       panel.classList.remove('hidden');
-      bindCompanyDetailPanel(panel);
       return;
     }
 
@@ -742,155 +740,13 @@
         </p>
       </div>`;
     panel.classList.remove('hidden');
-    bindCompanyDetailPanel(panel);
-  }
-
-  function bindCompanyDetailPanel(panel) {
     panel.querySelector('#close-company-detail').addEventListener('click', closeCompanyDetail);
-    loadCompanyOverview(panel, selectedCompanyCode);
   }
-
-  // ---- 企業概要（EDINETの有価証券報告書【事業の内容】） --------------------
-  // 取得は edinet_server.py のローカルプロキシ経由で行う。EDINET APIはCORS
-  // ヘッダを返さずAPIキーも必要なため、ページのJSから直接は呼べない。
-  // プロキシを持たないサーバー（serve_nocache.py）や file:// で開いた場合は、
-  // 何も表示せず黙って諦める（使えない機能のエラーを常時出すとノイズになる）。
-  let overviewPollTimer = null;
 
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
-  }
-
-  function overviewBox(inner, tone) {
-    const tones = {
-      info: 'bg-slate-50 border-slate-200 text-slate-600',
-      warn: 'bg-amber-50 border-amber-200 text-amber-800',
-    };
-    return `<div class="mx-4 mt-3 px-3 py-2.5 rounded-lg border text-[11px] leading-relaxed ${tones[tone] || tones.info}">${inner}</div>`;
-  }
-
-  async function loadCompanyOverview(panel, code) {
-    const host = panel.querySelector('.company-detail-overview');
-    if (overviewPollTimer) { clearTimeout(overviewPollTimer); overviewPollTimer = null; }
-    if (!host || !code) return;
-    if (!/^https?:$/.test(location.protocol)) return; // file:// ではプロキシを呼べない
-
-    host.innerHTML = overviewBox('<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>企業概要を取得しています…');
-
-    let res, data;
-    try {
-      res = await fetch(`/api/edinet/overview?code=${encodeURIComponent(code)}`,
-                        { headers: { Accept: 'application/json' } });
-      data = await res.json();
-    } catch (e) {
-      host.innerHTML = ''; // プロキシ非対応のサーバー（JSONを返さない）
-      return;
-    }
-    if (code !== selectedCompanyCode) return; // 表示中の企業が変わっていたら破棄する
-
-    if (data.error === 'NO_API_KEY') {
-      host.innerHTML = overviewBox(
-        '<b>企業概要（EDINET）は未設定です。</b><br>' +
-        '<a href="https://api.edinet-fsa.go.jp/" target="_blank" rel="noopener noreferrer" class="underline">金融庁EDINET</a>' +
-        'で無料のAPIキーを取得し、環境変数 <code class="px-1 rounded bg-white border">EDINET_API_KEY</code> に設定してから ' +
-        '<code class="px-1 rounded bg-white border">edinet_server.py</code> を起動してください。', 'warn');
-      return;
-    }
-    if (data.error === 'INDEX_NOT_READY') {
-      renderIndexBuilder(host, data);
-      return;
-    }
-    if (data.error) {
-      host.innerHTML = overviewBox(`企業概要を取得できませんでした: ${esc(data.message || data.error)}`, 'warn');
-      return;
-    }
-    if (!data.found) {
-      host.innerHTML = overviewBox(esc(data.message || 'EDINETに有価証券報告書が見つかりませんでした。'));
-      return;
-    }
-
-    const meta = [
-      data.periodEnd ? `${esc(data.periodEnd)}期` : null,
-      data.submitDate ? `${esc(data.submitDate)} 提出` : null,
-    ].filter(Boolean).join(' / ');
-    const hasMore = data.text && data.lead && data.text.length > data.lead.length;
-
-    host.innerHTML = `
-      <div class="mx-4 mt-3 px-3.5 py-3 rounded-lg border border-slate-200 bg-white">
-        <div class="flex items-center gap-2 mb-1.5">
-          <i class="fa-solid fa-file-lines text-slate-400 text-[11px]"></i>
-          <span class="text-[11px] font-bold text-slate-700">企業概要</span>
-          <span class="text-[10px] text-slate-400">${meta}</span>
-        </div>
-        <p class="overview-lead text-[12px] leading-relaxed text-slate-700 whitespace-pre-line">${esc(data.lead)}</p>
-        <p class="overview-full hidden text-[12px] leading-relaxed text-slate-700 whitespace-pre-line">${esc(data.text)}</p>
-        ${hasMore ? '<button type="button" class="overview-toggle mt-1.5 text-[11px] font-semibold text-brand-600 hover:underline">全文を読む</button>' : ''}
-        <p class="mt-2 text-[10px] text-slate-400">出典: ${esc(data.source)}</p>
-      </div>`;
-
-    const toggle = host.querySelector('.overview-toggle');
-    if (toggle) {
-      toggle.addEventListener('click', () => {
-        const lead = host.querySelector('.overview-lead');
-        const full = host.querySelector('.overview-full');
-        const open = !full.classList.contains('hidden');
-        full.classList.toggle('hidden', open);
-        lead.classList.toggle('hidden', !open);
-        toggle.textContent = open ? '全文を読む' : '折りたたむ';
-      });
-    }
-  }
-
-  // 銘柄索引の構築UI。EDINETの書類一覧APIは提出日でしか引けず銘柄コードで
-  // 検索できないため、初回だけ提出日を遡って索引を作る必要がある。
-  function renderIndexBuilder(host, status) {
-    if (status.building) {
-      const pct = status.total ? Math.round((status.progress / status.total) * 100) : 0;
-      host.innerHTML = overviewBox(
-        `<b>企業概要の索引を作成しています…</b> ${pct}%（${status.progress}/${status.total}日ぶん走査）<br>` +
-        '初回のみ数分かかります。完了後は銘柄を選ぶたびに自動で表示されます。');
-      overviewPollTimer = setTimeout(() => pollIndexStatus(host), 2000);
-      return;
-    }
-    // 索引構築のエラーは buildError で受ける。status.error はoverview応答の
-    // マーカー（INDEX_NOT_READY）が入るため、ここで見ると必ず失敗表示になる。
-    if (status.buildError) {
-      host.innerHTML = overviewBox(`索引の作成に失敗しました: ${esc(status.buildError)}`, 'warn');
-      return;
-    }
-    host.innerHTML = overviewBox(
-      '<b>企業概要を表示するには、初回だけ索引の作成が必要です。</b><br>' +
-      'EDINETは提出日でしか書類を検索できないため、提出日を遡って銘柄コードとの対応表を作ります（数分）。' +
-      '<button type="button" class="overview-build-btn ml-2 font-semibold px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-50">索引を作成</button>');
-    host.querySelector('.overview-build-btn').addEventListener('click', async (ev) => {
-      ev.target.disabled = true;
-      ev.target.textContent = '開始しています…';
-      try {
-        const r = await fetch('/api/edinet/index/build', { method: 'POST' });
-        renderIndexBuilder(host, await r.json());
-      } catch (e) {
-        host.innerHTML = overviewBox('索引の作成を開始できませんでした。', 'warn');
-      }
-    });
-  }
-
-  async function pollIndexStatus(host) {
-    if (!selectedCompanyCode || !host.isConnected) return;
-    try {
-      const r = await fetch('/api/edinet/status');
-      const status = await r.json();
-      if (status.indexReady && !status.building) {
-        // 索引ができたので、表示中の銘柄の概要を取りに行く
-        const panel = document.getElementById('company-detail-panel');
-        if (panel) loadCompanyOverview(panel, selectedCompanyCode);
-        return;
-      }
-      renderIndexBuilder(host, status);
-    } catch (e) {
-      overviewPollTimer = setTimeout(() => pollIndexStatus(host), 5000);
-    }
   }
 
   function showModal(id) {
