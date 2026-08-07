@@ -26,7 +26,9 @@
     // 指標キーではなく軸オブジェクトを持つ： [{axis, min, max}, ...]
     customFilters: [],
     keyword: '',
-    hiddenCodes: new Set() // 右クリックで非表示にした企業コード
+    hiddenCodes: new Set(), // 右クリックで非表示にした企業コード
+    reportSortColumn: null, // 分析レポートのソート対象列（'x'|'y'|'z'|null）
+    reportSortAsc: true // 昇順（true）／降順（false）
   };
 
   // 既定の実データセット（js/data.js、J-Quants API取得）のメタ情報。
@@ -471,72 +473,73 @@
   // ---------------- 分析レポート ----------------
   function openReport() {
     const filtered = getFilteredCompanies();
-    const fyIndex = LATEST_FY_INDEX;
     const body = document.getElementById('report-body');
     const axes = state.axes;
 
-    const caps = filtered.map((c) => computeMetricValue(c, 'market_cap', fyIndex)).filter((v) => v !== null);
-    const totalCap = caps.reduce((a, b) => a + b, 0);
-    // サマリーの平均値は軸の設定と関係なく、常に最新決算期の実績で算出する。
-    const avgAxis = (axis) => {
-      const vals = filtered.map((c) => computeAxisValue(c, axis)).filter((v) => v !== null && Number.isFinite(v));
-      if (vals.length === 0) return null;
-      return vals.reduce((a, b) => a + b, 0) / vals.length;
-    };
-    const avgGrowth = avgAxis({ metric: 'revenue_growth', variant: 'forecast', offset: 0 });
-    const avgMargin = avgAxis({ metric: 'op_margin', variant: 'actual', offset: 0 });
-    const avgPer = avgAxis({ metric: 'per', variant: 'actual', offset: 0 });
-    const avgRoe = avgAxis({ metric: 'roe', variant: 'actual', offset: 0 });
-
-    const sorted = filtered
-      .map((c) => ({ c, cap: computeMetricValue(c, 'market_cap', fyIndex) || 0 }))
-      .sort((a, b) => b.cap - a.cap)
-      .slice(0, 30);
-
-    const sourceNote = 'J-Quants APIから取得した実データです（開示データ提供期間の制約等により、一部項目が取得できなかった企業ではその値が欠損表示「-」になります）。';
+    // ソート適用
+    let sorted = filtered.slice();
+    if (state.reportSortColumn) {
+      const axis = axes[state.reportSortColumn];
+      sorted.sort((a, b) => {
+        const valA = computeAxisValue(a, axis);
+        const valB = computeAxisValue(b, axis);
+        const aVal = (valA === null || !Number.isFinite(valA)) ? -Infinity : valA;
+        const bVal = (valB === null || !Number.isFinite(valB)) ? -Infinity : valB;
+        const diff = aVal - bVal;
+        return state.reportSortAsc ? diff : -diff;
+      });
+    }
 
     body.innerHTML = `
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div class="report-metric-card"><div class="value">${filtered.length}社</div><div class="label">対象企業数</div></div>
-        <div class="report-metric-card"><div class="value">${Math.round(totalCap).toLocaleString('ja-JP')}億円</div><div class="label">合計時価総額</div></div>
-        <div class="report-metric-card"><div class="value">${fmtOrDash(avgGrowth,'%')}</div><div class="label">平均 売上高成長率(会社予想)</div></div>
-        <div class="report-metric-card"><div class="value">${fmtOrDash(avgMargin,'%')}</div><div class="label">平均 営業利益率</div></div>
-        <div class="report-metric-card"><div class="value">${fmtOrDash(avgPer,'倍')}</div><div class="label">平均 PER</div></div>
-        <div class="report-metric-card"><div class="value">${fmtOrDash(avgRoe,'%')}</div><div class="label">平均 ROE</div></div>
-        <div class="report-metric-card"><div class="value">${axisLabel(axes.x)}</div><div class="label">X軸</div></div>
-        <div class="report-metric-card"><div class="value">${axisLabel(axes.y)} / ${axisLabel(axes.z)}</div><div class="label">Y軸 / Z軸</div></div>
-      </div>
       <div>
-        <h4 class="text-sm font-bold text-slate-700 mb-2">時価総額上位企業（最大30社）</h4>
+        <h4 class="text-sm font-bold text-slate-700 mb-3">
+          フィルター後企業一覧（${filtered.length}社）
+          <span class="text-xs font-normal text-slate-500 ml-2">軸設定: X軸 ${axisLabel(axes.x)} / Y軸 ${axisLabel(axes.y)} / Z軸 ${axisLabel(axes.z)}</span>
+        </h4>
         <div class="overflow-x-auto border border-slate-200 rounded-lg">
-          <table class="w-full text-left">
+          <table class="w-full text-left text-sm">
             <thead class="bg-slate-50 text-slate-500 text-[11px]">
               <tr>
-                <th class="px-3 py-2">企業名</th><th class="px-3 py-2">業種</th>
+                <th class="px-3 py-2">企業名</th>
+                <th class="px-3 py-2 text-center">業種</th>
                 <th class="px-3 py-2 text-right">時価総額</th>
-                <th class="px-3 py-2 text-right">${axisLabel(axes.x)}</th>
-                <th class="px-3 py-2 text-right">${axisLabel(axes.y)}</th>
-                <th class="px-3 py-2 text-right">${axisLabel(axes.z)}</th>
+                <th class="px-3 py-2 text-right cursor-pointer hover:bg-slate-100 select-none report-header-x" data-axis="x">${axisLabel(axes.x)} ${state.reportSortColumn === 'x' ? (state.reportSortAsc ? '▲' : '▼') : ''}</th>
+                <th class="px-3 py-2 text-right cursor-pointer hover:bg-slate-100 select-none report-header-y" data-axis="y">${axisLabel(axes.y)} ${state.reportSortColumn === 'y' ? (state.reportSortAsc ? '▲' : '▼') : ''}</th>
+                <th class="px-3 py-2 text-right cursor-pointer hover:bg-slate-100 select-none report-header-z" data-axis="z">${axisLabel(axes.z)} ${state.reportSortColumn === 'z' ? (state.reportSortAsc ? '▲' : '▼') : ''}</th>
               </tr>
             </thead>
             <tbody>
-              ${sorted.map(({ c, cap }) => `
-                <tr class="report-company-row">
-                  <td class="font-semibold text-slate-800">${c.name}<span class="text-slate-400 font-normal ml-1">(${c.code})</span></td>
-                  <td class="text-slate-500">${c.sector}</td>
-                  <td class="text-right">${formatCompactMarketCap(cap)}</td>
-                  <td class="text-right">${formatAxisValue(axes.x, computeAxisValue(c, axes.x))}</td>
-                  <td class="text-right">${formatAxisValue(axes.y, computeAxisValue(c, axes.y))}</td>
-                  <td class="text-right">${formatAxisValue(axes.z, computeAxisValue(c, axes.z))}</td>
+              ${sorted.map((c) => `
+                <tr class="border-t border-slate-100 hover:bg-slate-50">
+                  <td class="px-3 py-2 font-semibold text-slate-800">${c.name}<span class="text-slate-400 font-normal ml-1 text-xs">(${c.code})</span></td>
+                  <td class="px-3 py-2 text-center text-xs text-slate-600">${c.sector}</td>
+                  <td class="px-3 py-2 text-right text-xs">${formatCompactMarketCap(computeMetricValue(c, 'market_cap', LATEST_FY_INDEX) || 0)}</td>
+                  <td class="px-3 py-2 text-right text-xs">${formatAxisValue(axes.x, computeAxisValue(c, axes.x))}</td>
+                  <td class="px-3 py-2 text-right text-xs">${formatAxisValue(axes.y, computeAxisValue(c, axes.y))}</td>
+                  <td class="px-3 py-2 text-right text-xs">${formatAxisValue(axes.z, computeAxisValue(c, axes.z))}</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
         </div>
       </div>
-      <p class="text-[11px] text-slate-400">※ 表示データは${sourceNote}</p>
     `;
+
     showModal('report-modal');
+
+    // ソート列のヘッダークリックイベント設定
+    document.querySelectorAll('.report-header-x, .report-header-y, .report-header-z').forEach((el) => {
+      el.addEventListener('click', () => {
+        const axis = el.dataset.axis;
+        if (state.reportSortColumn === axis) {
+          state.reportSortAsc = !state.reportSortAsc;
+        } else {
+          state.reportSortColumn = axis;
+          state.reportSortAsc = true;
+        }
+        openReport();
+      });
+    });
   }
 
   // ---------------- モーダル制御 ----------------
