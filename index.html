@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3Dマルチプル・スクリーニング | 日本株 財務指標3D分析</title>
+<meta name="description" content="3つの財務指標の組み合わせによる日本株企業の分布を3D散布図で可視化するスクリーニングツール。J-Quants APIとの連携にも対応。">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.30.0/plotly.min.js"></script>
+<link rel="stylesheet" href="css/style.css">
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ['"Noto Sans JP"', 'sans-serif'] },
+        colors: {
+          brand: { 50:'#eef4ff',100:'#dbe7ff',500:'#3d6bf0',600:'#2f57d6',700:'#274aad' }
+        }
+      }
+    }
+  }
+</script>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans">
+
+<!-- ===================== ヘッダー ===================== -->
+<header class="bg-white border-b border-slate-200 sticky top-0 z-40">
+  <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+    <div class="flex items-center gap-3 min-w-0">
+      <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white shrink-0">
+        <i class="fa-solid fa-cube"></i>
+      </div>
+      <div class="min-w-0">
+        <h1 class="text-base sm:text-lg font-bold text-slate-900 leading-tight truncate">3Dマルチプル・スクリーニング</h1>
+        <p class="text-[11px] sm:text-xs text-slate-500 leading-tight truncate">3つの財務指標の組み合わせによる企業分布を3D散布図で可視化します。</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <span id="data-source-badge" class="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+        <i class="fa-solid fa-circle-check"></i> 実データ表示中
+      </span>
+      <button id="open-jquants-btn" class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition">
+        <i class="fa-solid fa-database"></i><span class="hidden sm:inline">データ管理</span>
+      </button>
+      <button id="open-guide-btn" class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition">
+        <i class="fa-regular fa-circle-question"></i><span class="hidden sm:inline">使い方ガイド</span>
+      </button>
+      <button id="open-report-btn" class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3 sm:px-4 py-2 rounded-lg bg-brand-600 text-white hover:bg-brand-700 transition shadow-sm">
+        <i class="fa-solid fa-chart-simple"></i>
+        <span>分析レポートを表示 (<span id="report-company-count">0</span>社)</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== メインレイアウト ===================== -->
+<main class="max-w-[1600px] mx-auto px-4 sm:px-6 py-5 flex flex-col lg:flex-row gap-5">
+
+  <!-- ---------- 左サイドバー：軸設定・フィルター ---------- -->
+  <aside id="control-panel" class="w-full lg:w-[280px] shrink-0 space-y-4">
+    <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+      <h2 class="text-sm font-bold text-slate-700 flex items-center gap-2"><i class="fa-solid fa-sliders text-brand-600"></i>軸の設定</h2>
+
+      <p class="text-[11px] text-slate-400 leading-relaxed -mt-1">指標を選ぶと、その指標で選べる「種別（実績／会社予想）」と「決算期」が下に表示されます。</p>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1.5">X軸（横軸）</label>
+        <select id="axis-x" class="axis-select"></select>
+        <div id="axis-x-sub" class="axis-sub"></div>
+        <label class="inline-flex items-center gap-1.5 mt-1.5 text-[11px] text-slate-500">
+          <input type="checkbox" id="axis-x-log" class="rounded"> 対数スケール
+        </label>
+        <div id="axis-x-filter" class="mt-1.5 pt-1.5 border-t border-slate-200"></div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1.5">Y軸（縦軸）</label>
+        <select id="axis-y" class="axis-select"></select>
+        <div id="axis-y-sub" class="axis-sub"></div>
+        <label class="inline-flex items-center gap-1.5 mt-1.5 text-[11px] text-slate-500">
+          <input type="checkbox" id="axis-y-log" class="rounded"> 対数スケール
+        </label>
+        <div id="axis-y-filter" class="mt-1.5 pt-1.5 border-t border-slate-200"></div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1.5">Z軸（奥行き）</label>
+        <select id="axis-z" class="axis-select"></select>
+        <div id="axis-z-sub" class="axis-sub"></div>
+        <label class="inline-flex items-center gap-1.5 mt-1.5 text-[11px] text-slate-500">
+          <input type="checkbox" id="axis-z-log" class="rounded"> 対数スケール
+        </label>
+        <div id="axis-z-filter" class="mt-1.5 pt-1.5 border-t border-slate-200"></div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+      <h2 class="text-sm font-bold text-slate-700 flex items-center gap-2"><i class="fa-solid fa-filter text-brand-600"></i>フィルター</h2>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1.5">市場</label>
+        <select id="market-select" class="axis-select">
+          <option value="all">全ての市場</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1.5">業種</label>
+        <div id="sector-filter-list" class="max-h-40 overflow-y-auto space-y-1 pr-1 text-xs"></div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1.5">指標でフィルター</label>
+        <div class="flex gap-2 mb-2">
+          <select id="custom-filter-metric-select" class="flex-1 px-2 py-1.5 text-xs border border-slate-300 rounded bg-white">
+            <option value="">-- 指標を選択 --</option>
+          </select>
+          <button id="add-custom-filter-btn" class="px-3 py-1.5 text-xs font-semibold bg-brand-600 text-white rounded hover:bg-brand-700">追加</button>
+        </div>
+        <div id="custom-filters-container" class="space-y-2"></div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1.5">キーワード検索（企業名・コード）</label>
+        <input type="text" id="keyword-search" placeholder="例）トヨタ, 7203" class="axis-select">
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button id="reset-filter-btn" class="flex-1 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition">フィルターをリセット</button>
+        <button id="apply-filter-btn" class="flex-1 text-xs font-semibold px-3 py-2 rounded-lg bg-brand-600 text-white hover:bg-brand-700 transition">分析する</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ---------- 中央：チャート ---------- -->
+  <section class="flex-1 min-w-0 space-y-3">
+    <div class="bg-white rounded-xl border border-slate-200 p-3 sm:p-4">
+      <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-2">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2" id="sector-legend"></div>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] font-semibold text-slate-400 mr-0.5"><i class="fa-solid fa-camera"></i> 視点</span>
+          <button type="button" id="view-default-btn" data-view="default" class="view-btn text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition">初期視点</button>
+          <button type="button" id="view-xy-btn" data-view="xy" class="view-btn text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition">XY正面</button>
+          <button type="button" id="view-xz-btn" data-view="xz" class="view-btn text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition">XZ正面</button>
+          <button type="button" id="view-yz-btn" data-view="yz" class="view-btn text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition">YZ正面</button>
+        </div>
+      </div>
+      <div id="chart-3d" class="w-full" style="height:640px;"></div>
+      <p class="text-[11px] text-slate-400 mt-1 text-right">※ 球の大きさは時価総額を表します。黒の太線は表示中データのX・Y・Z最小値が交わる基準点（O点）から伸びる3軸を表します。球を左クリックすると下に主要財務情報が表示され、右クリックするとその企業を非表示にできます。</p>
+    </div>
+    <!-- 球を左クリックすると、その企業の主要財務情報がここに表示される（初期状態は非表示） -->
+    <div id="company-detail-panel" class="bg-white rounded-xl border border-slate-200 hidden"></div>
+
+    <div class="bg-white rounded-xl border border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+      <span id="data-update-note">データ更新日: 2026-07-29（J-Quants API取得時点）</span>
+      <span id="data-provider-note">出所: J-Quants API（東証プライム上場30社）</span>
+    </div>
+  </section>
+
+  <!-- ---------- 右サイドバー：注目企業 ---------- -->
+  <aside class="w-full lg:w-[300px] shrink-0">
+    <div class="bg-white rounded-xl border border-slate-200 p-4">
+      <h2 class="text-sm font-bold text-slate-700 flex items-center justify-between mb-3">
+        <span><i class="fa-solid fa-star text-amber-400 mr-1"></i>注目企業（時価総額上位）</span>
+      </h2>
+      <ul id="top-companies-list" class="space-y-2 max-h-[560px] overflow-y-auto pr-1"></ul>
+    </div>
+  </aside>
+</main>
+
+<footer class="max-w-[1600px] mx-auto px-4 sm:px-6 pb-8 pt-2 text-center text-[11px] text-slate-400">
+  <p>本サイトは情報提供・分析支援を目的とした可視化ツールであり、投資勧誘を目的としたものではありません。表示データはJ-Quants APIまたはEDINET DB（<a href="https://edinetdb.jp" target="_blank" rel="noopener noreferrer" class="underline hover:text-slate-600">Powered by EDINET DB</a>)から取得した実データですが、取得元APIの仕様・制限（開示期間の制約等）により、一部の期・指標が欠損している場合があります。正確性・完全性は保証されません。企業概要欄のAI所見はEDINET DBが大規模言語モデルにより自動生成したものであり、事実と異なる記述を含む可能性があります。投資判断・与信判断の根拠として使用しないでください。投資判断は必ず一次情報（有価証券報告書・IR資料等）をご確認の上、自己責任で行ってください。</p>
+</footer>
+
+<!-- ===================== 企業詳細ツールチップ用テンプレート（JSで生成） ===================== -->
+
+<!-- ===================== 分析レポートモーダル ===================== -->
+<div id="report-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+  <div class="bg-white rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-y-auto shadow-2xl">
+    <div class="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+      <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-chart-simple text-brand-600 mr-2"></i>分析レポート</h3>
+      <button id="close-report-btn" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+    </div>
+    <div id="report-body" class="p-6 space-y-5"></div>
+  </div>
+</div>
+
+<!-- ===================== 企業を非表示にする確認ダイアログ ===================== -->
+<!-- window.confirm()はブラウザによってはマウスイベント処理中に抑制されることが
+     あるため、自前のモーダルで確認を行う。 -->
+<div id="hide-confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+  <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
+    <div class="px-6 py-5">
+      <h3 class="text-base font-bold text-slate-900 mb-2"><i class="fa-solid fa-eye-slash text-brand-600 mr-2"></i>企業を非表示にする</h3>
+      <p id="hide-confirm-text" class="text-sm text-slate-600"></p>
+    </div>
+    <div class="px-6 py-4 bg-slate-50 rounded-b-2xl flex justify-end gap-2">
+      <button id="hide-confirm-cancel" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800">キャンセル</button>
+      <button id="hide-confirm-ok" class="px-4 py-2 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg">非表示にする</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 使い方ガイドモーダル ===================== -->
+<div id="guide-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+  <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl">
+    <div class="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+      <h3 class="text-lg font-bold text-slate-900"><i class="fa-regular fa-circle-question text-brand-600 mr-2"></i>使い方ガイド</h3>
+      <button id="close-guide-btn" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+    </div>
+    <div class="p-6 space-y-4 text-sm text-slate-600 leading-relaxed">
+      <section>
+        <h4 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-cube text-brand-600 mr-1.5"></i>3D散布図の見方</h4>
+        <p>X・Y・Z軸それぞれに財務指標（成長率・利益率・PER・PBR・ROEなど）を割り当て、企業を球体として3D空間にプロットします。球体の大きさは時価総額、色は業種を表します。マウスでドラッグして回転、スクロールで拡大縮小、球体にマウスを乗せると詳細情報が表示されます。球体を左クリックすると、その企業の主要財務情報がチャートの下に表示されます。列は左から「会社予想／最新決算期／1期前／2期前…」の順で、各列の見出しには決算期（例: 2025/06期）と決算発表日を併記します。決算期の列はその期の実績値、「会社予想」列は最新決算期の発表時に開示された翌期の予想値です。PERとPEGレシオだけは予想の推移も見られるよう「実績」「予想」の2行に分けています。球体を右クリックすると、その企業をチャートから非表示にできます（フィルターをリセットすると再表示されます）。</p>
+      </section>
+      <section>
+        <h4 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-sliders text-brand-600 mr-1.5"></i>軸の設定</h4>
+        <p>左サイドバーで各軸に表示する指標を切り替えられます。指標を選ぶと、その指標で選べる項目が軸セレクタの下に現れます。</p>
+        <ul class="list-disc pl-5 mt-1.5 space-y-1">
+          <li><b>種別</b>：実績と会社予想の両方がある指標（売上高・PER・成長率・PEGレシオなど）で選べます。</li>
+          <li><b>決算期</b>：最新決算期／1期前／2期前…を軸ごとに個別に指定できます。X軸に「売上高・最新決算期」、Y軸に「売上高・1期前」といった組み合わせも可能です。</li>
+        </ul>
+        <p class="mt-1.5">「対数スケール」は指標に応じて自動で切り替わります（PER・時価総額のように分布が広い指標はON、利益率・成長率のようにマイナスを取りうる指標はOFF）。チェックボックスで手動変更もできます。</p>
+      </section>
+      <section>
+        <h4 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-calculator text-brand-600 mr-1.5"></i>PEGレシオ・株価パフォーマンス</h4>
+        <p><b>PEGレシオ</b>は PER ÷ 純利益成長率(%) です。実績（PER÷実績成長率）と会社予想（予想PER÷予想成長率）を選べます。成長率がマイナスの企業は、マイナスのPEGレシオとしてそのまま表示します（成長率が0または欠損の場合のみ「-」）。</p>
+        <p class="mt-1.5"><b>株価パフォーマンス</b>は、開始期の基準株価から終了期の基準株価までの騰落率(%)です。基準株価は各決算の発表日翌営業日の終値で、PER・PBR・時価総額の算出にも使っている値です。開始期と終了期はそれぞれ独立に選べます。</p>
+      </section>
+      <section>
+        <h4 class="font-bold text-slate-800 mb-1"><i class="fa-regular fa-calendar text-brand-600 mr-1.5"></i>決算期について</h4>
+        <p>企業によって決算期末の月が異なるため、期間の指定は暦年ではなく各社の「最新決算期から何期前か」という相対位置で行います。契約プランによっては開示データの提供期間が限られ、古い期がすべて欠損（「-」表示）になることがあります。</p>
+      </section>
+      <section>
+        <h4 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-filter text-brand-600 mr-1.5"></i>フィルター</h4>
+        <p>市場区分・業種・時価総額・キーワードで対象企業を絞り込めます。「分析する」ボタンでチャートに反映されます。</p>
+      </section>
+      <section>
+        <h4 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-database text-brand-600 mr-1.5"></i>データの更新</h4>
+        <p>本サイトはJ-Quants APIから取得済みの東証プライム上場30社の実データを標準で表示しています。データを更新するには、付属のPythonスクリプト（<code class="text-[11px] bg-slate-100 px-1 py-0.5 rounded">jquants_v2_bulk_download.py</code>）をGoogle Colab等で実行してJSONファイルを生成し、右上「データ管理」の「JSONを読み込む」から取り込んでください（詳しい手順はREADME.mdをご覧ください）。ブラウザから直接J-Quants APIキーで接続する機能はCORS制限により安定して動作しないため、本ツールでは提供していません。<br>「JSONで保存」で現在のデータセットをファイルに書き出し、「初期データに戻す」でいつでも標準の実データセットに戻せます。</p>
+      </section>
+      <section class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+        <i class="fa-solid fa-triangle-exclamation mr-1"></i>本ツールは情報提供・分析支援を目的としたものであり、投資勧誘を目的としたものではありません。掲載データの正確性・完全性は保証されません。
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== データ管理モーダル ===================== -->
+<div id="jquants-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+  <div class="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div class="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+      <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-database text-brand-600 mr-2"></i>データ管理</h3>
+      <button id="close-jquants-btn" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+    </div>
+    <div class="p-6 space-y-5">
+
+      <p class="text-xs text-slate-500 leading-relaxed">
+        本サイトは既定でJ-Quants APIから取得済みの東証プライム上場30社の実データを表示しています。
+        データを更新するには、付属のPythonスクリプト（<code class="text-[11px] bg-slate-100 px-1 py-0.5 rounded">jquants_v2_bulk_download.py</code>）を
+        Google Colab等で実行してJSONファイルを生成し、下記「JSONを読み込む」から取り込んでください（詳しい手順はREADME.mdをご覧ください）。
+      </p>
+
+      <div id="jq-status" class="text-xs hidden rounded-lg p-2.5"></div>
+
+      <div class="border-t border-slate-100 pt-4">
+        <h4 class="text-xs font-bold text-slate-500 mb-2"><i class="fa-solid fa-database mr-1"></i>データセットの管理</h4>
+        <div id="jq-current-dataset-info" class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-2.5 mb-3">実データを使用中です。</div>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="jq-export-btn" class="text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition"><i class="fa-solid fa-file-export mr-1"></i>JSONで保存</button>
+          <label class="text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition text-center cursor-pointer">
+            <i class="fa-solid fa-file-import mr-1"></i>JSONを読み込む
+            <input type="file" id="jq-import-file" accept="application/json" class="hidden">
+          </label>
+        </div>
+        <div class="grid grid-cols-1 gap-2 mt-2">
+          <button id="jq-reset-sample-btn" class="text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition"><i class="fa-solid fa-rotate-left mr-1"></i>初期データに戻す</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 読み込みオーバーレイ -->
+<div id="loading-overlay" class="fixed inset-0 z-[60] hidden items-center justify-center bg-slate-900/40">
+  <div class="bg-white rounded-xl px-6 py-5 flex items-center gap-3 shadow-xl">
+    <i class="fa-solid fa-spinner fa-spin text-brand-600 text-lg"></i>
+    <span id="loading-text" class="text-sm font-semibold text-slate-700">処理中...</span>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/metrics.js"></script>
+<script src="js/dataset-store.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+.env.local
+
+# EDINET DB API キャッシュ（各PCで独立生成）
+edinetdb_cache/raw/
+edinetdb_cache/daily_usage.json
+
+# ローカル設定
+.claude/settings.local.json
+serve_nocache.py
+
+# サンプル・テストデータ（古い実装）
+sample/
+genspark_site/
+novel_write/
+jquants_debug_fetch.py
+jquants_v2_test_toyota.py
+raw_*.json
+toyota_financials.csv
+*.bak
+
+# インストーラー
+Claude Setup.exe
+
+# 一時ファイル
+*.zip
+.DS_Store
+Thumbs.db
+*.tmp
+
+# 大容量データセット（各PCで独立生成）
+jquants_dataset_*.json
+jquants_dataset_*.json.bak
+edinetdb_dataset_*.json

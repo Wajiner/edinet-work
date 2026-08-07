@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "jquants-site",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["serve_nocache.py", "8345"],
+      "port": 8345
+    }
+  ]
+}
