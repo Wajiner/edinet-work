@@ -2,7 +2,7 @@
 
 3つの財務指標の組み合わせによる日本株企業の分布を、3Dバブルチャートで可視化するスクリーニングツールです。データは **EDINET DB**（[edinetdb.jp](https://edinetdb.jp)）から取得した実データを使用しており、サイトを開くだけで自動的に表示されます（ログイン・データの読み込み操作は不要）。
 
-公開URL: https://edinet-work.yozakuratann.workers.dev
+公開URL: https://edinet-work.stock-data-3d.workers.dev
 
 ## サイトの起動方法（ローカル）
 

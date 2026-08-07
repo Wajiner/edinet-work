@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://edinet-work.yozakuratann.workers.dev/sitemap.xml
+Sitemap: https://edinet-work.stock-data-3d.workers.dev/sitemap.xml
