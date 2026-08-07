@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>3Dマルチプル・スクリーニング | 日本株 財務指標3D分析</title>
-<meta name="description" content="3つの財務指標の組み合わせによる日本株企業の分布を3D散布図で可視化するスクリーニングツール。J-Quants APIとの連携にも対応。">
+<meta name="description" content="3つの財務指標の組み合わせによる日本株企業の分布を3D散布図で可視化するスクリーニングツール。EDINET DBの実データを使用。">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -44,9 +44,6 @@
       <span id="data-source-badge" class="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
         <i class="fa-solid fa-circle-check"></i> 実データ表示中
       </span>
-      <button id="open-jquants-btn" class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition">
-        <i class="fa-solid fa-database"></i><span class="hidden sm:inline">データ管理</span>
-      </button>
       <button id="open-guide-btn" class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition">
         <i class="fa-regular fa-circle-question"></i><span class="hidden sm:inline">使い方ガイド</span>
       </button>
@@ -151,8 +148,8 @@
     <div id="company-detail-panel" class="bg-white rounded-xl border border-slate-200 hidden"></div>
 
     <div class="bg-white rounded-xl border border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
-      <span id="data-update-note">データ更新日: 2026-07-29（J-Quants API取得時点）</span>
-      <span id="data-provider-note">出所: J-Quants API（東証プライム上場30社）</span>
+      <span id="data-update-note">データ読み込み中...</span>
+      <span id="data-provider-note">出所: EDINET DB</span>
     </div>
   </section>
 
@@ -168,7 +165,8 @@
 </main>
 
 <footer class="max-w-[1600px] mx-auto px-4 sm:px-6 pb-8 pt-2 text-center text-[11px] text-slate-400">
-  <p>本サイトは情報提供・分析支援を目的とした可視化ツールであり、投資勧誘を目的としたものではありません。表示データはJ-Quants APIまたはEDINET DB（<a href="https://edinetdb.jp" target="_blank" rel="noopener noreferrer" class="underline hover:text-slate-600">Powered by EDINET DB</a>)から取得した実データですが、取得元APIの仕様・制限（開示期間の制約等）により、一部の期・指標が欠損している場合があります。正確性・完全性は保証されません。企業概要欄のAI所見はEDINET DBが大規模言語モデルにより自動生成したものであり、事実と異なる記述を含む可能性があります。投資判断・与信判断の根拠として使用しないでください。投資判断は必ず一次情報（有価証券報告書・IR資料等）をご確認の上、自己責任で行ってください。</p>
+  <p>本サイトは情報提供・分析支援を目的とした可視化ツールであり、投資勧誘を目的としたものではありません。表示データはEDINET DBから取得した実データですが、取得元APIの仕様・制限（開示期間の制約等）により、一部の期・指標が欠損している場合があります。正確性・完全性は保証されません。企業概要欄のAI所見はEDINET DBが大規模言語モデルにより自動生成したものであり、事実と異なる記述を含む可能性があります。投資判断・与信判断の根拠として使用しないでください。投資判断は必ず一次情報（有価証券報告書・IR資料等）をご確認の上、自己責任で行ってください。<br>
+  <a href="https://edinetdb.jp" target="_blank" rel="noopener noreferrer" class="underline hover:text-slate-600">Powered by EDINET DB</a></p>
 </footer>
 
 <!-- ===================== 企業詳細ツールチップ用テンプレート（JSで生成） ===================== -->
@@ -222,60 +220,29 @@
         <p class="mt-1.5">「対数スケール」は指標に応じて自動で切り替わります（PER・時価総額のように分布が広い指標はON、利益率・成長率のようにマイナスを取りうる指標はOFF）。チェックボックスで手動変更もできます。</p>
       </section>
       <section>
-        <h4 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-calculator text-brand-600 mr-1.5"></i>PEGレシオ・株価パフォーマンス</h4>
+        <h4 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-calculator text-brand-600 mr-1.5"></i>PEGレシオについて</h4>
         <p><b>PEGレシオ</b>は PER ÷ 純利益成長率(%) です。実績（PER÷実績成長率）と会社予想（予想PER÷予想成長率）を選べます。成長率がマイナスの企業は、マイナスのPEGレシオとしてそのまま表示します（成長率が0または欠損の場合のみ「-」）。</p>
-        <p class="mt-1.5"><b>株価パフォーマンス</b>は、開始期の基準株価から終了期の基準株価までの騰落率(%)です。基準株価は各決算の発表日翌営業日の終値で、PER・PBR・時価総額の算出にも使っている値です。開始期と終了期はそれぞれ独立に選べます。</p>
+        <p class="mt-1.5 text-xs text-slate-500"><i class="fa-solid fa-circle-info mr-1"></i>「株価パフォーマンス」は算出に必要な基準株価がデータ取得元では提供されていないため、現在は選択しても「-」表示になります。</p>
       </section>
       <section>
         <h4 class="font-bold text-slate-800 mb-1"><i class="fa-regular fa-calendar text-brand-600 mr-1.5"></i>決算期について</h4>
-        <p>企業によって決算期末の月が異なるため、期間の指定は暦年ではなく各社の「最新決算期から何期前か」という相対位置で行います。契約プランによっては開示データの提供期間が限られ、古い期がすべて欠損（「-」表示）になることがあります。</p>
+        <p>企業によって決算期末の月が異なるため、期間の指定は暦年ではなく各社の「最新決算期から何期前か」という相対位置で行います。企業によっては開示データの取得が完了していない期があり、その場合は該当する期が欠損（「-」表示）になります。</p>
       </section>
       <section>
         <h4 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-filter text-brand-600 mr-1.5"></i>フィルター</h4>
-        <p>市場区分・業種・時価総額・キーワードで対象企業を絞り込めます。「分析する」ボタンでチャートに反映されます。</p>
+        <p>市場区分・業種・時価総額・キーワードで対象企業を絞り込めます。「分析する」ボタンでチャートに反映されます。市場区分（スタンダード／グロース）を初めて選ぶと、そのデータをその場で追加取得するため一瞬読み込みが入ることがあります。</p>
       </section>
       <section>
-        <h4 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-database text-brand-600 mr-1.5"></i>データの更新</h4>
-        <p>本サイトはJ-Quants APIから取得済みの東証プライム上場30社の実データを標準で表示しています。データを更新するには、付属のPythonスクリプト（<code class="text-[11px] bg-slate-100 px-1 py-0.5 rounded">jquants_v2_bulk_download.py</code>）をGoogle Colab等で実行してJSONファイルを生成し、右上「データ管理」の「JSONを読み込む」から取り込んでください（詳しい手順はREADME.mdをご覧ください）。ブラウザから直接J-Quants APIキーで接続する機能はCORS制限により安定して動作しないため、本ツールでは提供していません。<br>「JSONで保存」で現在のデータセットをファイルに書き出し、「初期データに戻す」でいつでも標準の実データセットに戻せます。</p>
+        <h4 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-file-lines text-brand-600 mr-1.5"></i>企業概要・AI所見</h4>
+        <p>球体を左クリックした際の詳細パネルには、EDINET DBが提供する事業の内容・AI所見も表示されます。AI所見はLLMによる自動生成であり、事実と異なる記述を含む可能性があるため、投資判断・与信判断の根拠として使用しないでください。</p>
+      </section>
+      <section>
+        <h4 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-database text-brand-600 mr-1.5"></i>データについて</h4>
+        <p>本サイトが表示するデータは<a href="https://edinetdb.jp" target="_blank" rel="noopener noreferrer" class="text-brand-600 underline">EDINET DB</a>から取得した実データで、運営者側で定期的に更新しています。</p>
       </section>
       <section class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-        <i class="fa-solid fa-triangle-exclamation mr-1"></i>本ツールは情報提供・分析支援を目的としたものであり、投資勧誘を目的としたものではありません。掲載データの正確性・完全性は保証されません。
+        <i class="fa-solid fa-triangle-exclamation mr-1"></i>本ツールは情報提供・分析支援を目的としたものであり、投資勧誘を目的としたものではありません。掲載データの正確性・完全性は保証されません。事業概要・AI所見はLLMによる自動生成を含みます。
       </section>
-    </div>
-  </div>
-</div>
-
-<!-- ===================== データ管理モーダル ===================== -->
-<div id="jquants-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
-  <div class="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
-    <div class="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
-      <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-database text-brand-600 mr-2"></i>データ管理</h3>
-      <button id="close-jquants-btn" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
-    </div>
-    <div class="p-6 space-y-5">
-
-      <p class="text-xs text-slate-500 leading-relaxed">
-        本サイトは既定でJ-Quants APIから取得済みの東証プライム上場30社の実データを表示しています。
-        データを更新するには、付属のPythonスクリプト（<code class="text-[11px] bg-slate-100 px-1 py-0.5 rounded">jquants_v2_bulk_download.py</code>）を
-        Google Colab等で実行してJSONファイルを生成し、下記「JSONを読み込む」から取り込んでください（詳しい手順はREADME.mdをご覧ください）。
-      </p>
-
-      <div id="jq-status" class="text-xs hidden rounded-lg p-2.5"></div>
-
-      <div class="border-t border-slate-100 pt-4">
-        <h4 class="text-xs font-bold text-slate-500 mb-2"><i class="fa-solid fa-database mr-1"></i>データセットの管理</h4>
-        <div id="jq-current-dataset-info" class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-2.5 mb-3">実データを使用中です。</div>
-        <div class="grid grid-cols-2 gap-2">
-          <button id="jq-export-btn" class="text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition"><i class="fa-solid fa-file-export mr-1"></i>JSONで保存</button>
-          <label class="text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition text-center cursor-pointer">
-            <i class="fa-solid fa-file-import mr-1"></i>JSONを読み込む
-            <input type="file" id="jq-import-file" accept="application/json" class="hidden">
-          </label>
-        </div>
-        <div class="grid grid-cols-1 gap-2 mt-2">
-          <button id="jq-reset-sample-btn" class="text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition"><i class="fa-solid fa-rotate-left mr-1"></i>初期データに戻す</button>
-        </div>
-      </div>
     </div>
   </div>
 </div>

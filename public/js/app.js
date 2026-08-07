@@ -40,7 +40,7 @@
   };
 
   let companies = [];
-  let datasetMeta = DEFAULT_DATASET_META; // {type:'default'|'live'|'imported', downloadedAt, ...}
+  let datasetMeta = DEFAULT_DATASET_META; // {type:'default'|'live', downloadedAt, ...}
   let manifest = null; // data/manifest.jsonの内容（ライブ取得に成功した場合のみ）
   let loadedMarkets = new Set(); // 遅延読み込み済みの市場区分名（例: '東証プライム'）
 
@@ -59,7 +59,6 @@
     populateSectorFilter();
     populateLegend();
     updateDatasetBadges();
-    updateDatasetInfoBox();
     refreshChart();
   }
 
@@ -68,12 +67,7 @@
     const updateNote = document.getElementById('data-update-note');
     const providerNote = document.getElementById('data-provider-note');
     const when = datasetMeta.downloadedAt ? new Date(datasetMeta.downloadedAt).toLocaleString('ja-JP') : '不明';
-    if (datasetMeta.type === 'imported') {
-      badge.innerHTML = '<i class="fa-solid fa-circle-check"></i> 読み込み済みデータ';
-      updateNote.textContent = `データ更新日: ${when}（読み込み時点）`;
-      const providerLabel = datasetMeta.sourceType === 'edinetdb' ? 'EDINET DB' : 'J-Quants API';
-      providerNote.textContent = `出所: ${providerLabel}（インポートしたJSONファイル）`;
-    } else if (datasetMeta.type === 'live') {
+    if (datasetMeta.type === 'live') {
       badge.innerHTML = '<i class="fa-solid fa-circle-check"></i> 実データ表示中';
       updateNote.textContent = `データ更新日: ${when}`;
       providerNote.textContent = '出所: EDINET DB';
@@ -83,20 +77,6 @@
       providerNote.textContent = '出所: J-Quants API（東証プライム上場30社・サンプル、実データ取得に失敗）';
     }
     badge.className = 'hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200';
-  }
-
-  function updateDatasetInfoBox() {
-    const el = document.getElementById('jq-current-dataset-info');
-    if (!el) return;
-    if (datasetMeta.type === 'imported') {
-      const when = datasetMeta.downloadedAt ? new Date(datasetMeta.downloadedAt).toLocaleString('ja-JP') : '不明';
-      el.innerHTML = `JSONファイルから読み込んだデータを使用中です。<br>企業数: ${companies.length}社 / 取得日時: ${when}`;
-    } else if (datasetMeta.type === 'live') {
-      const loadedList = Array.from(loadedMarkets).join('・') || '-';
-      el.innerHTML = `EDINET DBの実データを使用中です。<br>企業数: ${companies.length}社 / 読み込み済み市場: ${loadedList}`;
-    } else {
-      el.textContent = `サンプルデータを使用中です（${companies.length}社、東証プライム）。実データの取得に失敗しました。`;
-    }
   }
 
   // ---------------- ライブデータの起動時fetch・市場別遅延読み込み ----------------
@@ -134,7 +114,6 @@
     added.forEach((c) => state.activeSectors.add(c.sector));
     populateSectorFilter();
     populateLegend();
-    updateDatasetInfoBox();
     refreshChart();
   }
 
@@ -959,47 +938,6 @@
     }
   }
 
-  // ---------------- データ管理 UI（JSON保存/読込・初期データに戻す） ----------------
-  function initDatasetUI() {
-    const statusEl = document.getElementById('jq-status');
-    function showStatus(msg, type) {
-      statusEl.textContent = msg;
-      statusEl.classList.remove('hidden');
-      statusEl.className = 'text-xs rounded-lg p-2.5 ' +
-        (type === 'error' ? 'bg-red-50 text-red-700 border border-red-200'
-          : type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-          : 'bg-slate-50 text-slate-600 border border-slate-200');
-    }
-
-    document.getElementById('jq-export-btn').addEventListener('click', () => {
-      DatasetStore.exportToFile(companies, datasetMeta);
-      showStatus('JSONファイルとして保存しました。', 'success');
-    });
-
-    document.getElementById('jq-import-file').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      try {
-        const { companies: importedCompanies, meta } = await DatasetStore.importFromFile(file);
-        // meta.type には元データの出所（'jquants'/'edinetdb'等）が入っているが、
-        // ここで'imported'に上書きするため、出所表示用に別キーへ退避しておく。
-        const newMeta = Object.assign({}, meta, { type: 'imported', sourceType: meta.type });
-        setDataset(importedCompanies, newMeta);
-        showStatus(`JSONファイルを読み込みました（${importedCompanies.length}社）。`, 'success');
-      } catch (err) {
-        console.error(err);
-        showStatus('読み込みに失敗しました: ' + err.message, 'error');
-      } finally {
-        e.target.value = '';
-      }
-    });
-
-    document.getElementById('jq-reset-sample-btn').addEventListener('click', () => {
-      setDataset(DatasetStore.getSample(), DEFAULT_DATASET_META);
-      showStatus('初期データセットに戻しました。', 'info');
-    });
-  }
-
   // ---------------- イベントバインド ----------------
   function bindEvents() {
     AXIS_KEYS.forEach((k) => {
@@ -1088,10 +1026,6 @@
     document.getElementById('close-guide-btn').addEventListener('click', () => hideModal('guide-modal'));
     document.getElementById('guide-modal').addEventListener('click', (e) => { if (e.target.id === 'guide-modal') hideModal('guide-modal'); });
 
-    document.getElementById('open-jquants-btn').addEventListener('click', () => showModal('jquants-modal'));
-    document.getElementById('close-jquants-btn').addEventListener('click', () => hideModal('jquants-modal'));
-    document.getElementById('jquants-modal').addEventListener('click', (e) => { if (e.target.id === 'jquants-modal') hideModal('jquants-modal'); });
-
     document.getElementById('top-companies-list').addEventListener('click', (e) => {
       const item = e.target.closest('.top-company-item');
       if (!item) return;
@@ -1113,7 +1047,6 @@
     populateCustomFilterMetricSelect();
     bindEvents();
     bindHideConfirmEvents();
-    initDatasetUI();
 
     // 起動時：data/manifest.json経由で東証プライムの実データをfetchする。
     // 未生成・ネットワークエラー等で取得できなければ埋め込みサンプルにフォールバックする。
