@@ -207,10 +207,10 @@ const METRIC_DEFS = {
   price_performance: {
     label: '株価パフォーマンス', unit: '%', scaleType: 'linear',
     kind: 'range',
-    hint: '開始期の基準株価から終了期の基準株価までの騰落率です。',
+    hint: 'PER/PBRとEPS/BPSから逆算した期末株価（基準株価）の騰落率です。',
     computeRange: (f, fromIndex, toIndex) => {
-      const from = pickAt(f.refPrice, fromIndex);
-      const to = pickAt(f.refPrice, toIndex);
+      const from = impliedSharePrice(f, fromIndex);
+      const to = impliedSharePrice(f, toIndex);
       if (from === null || to === null || from === 0) return null;
       return ((to - from) / Math.abs(from)) * 100;
     }
