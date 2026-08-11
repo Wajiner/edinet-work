@@ -265,10 +265,20 @@ const METRIC_DEFS = {
     label: 'フリーキャッシュフロー', unit: '億円', scaleType: 'log',
     variants: { actual: { label: '実績', compute: (f, i) => pickAt(f.freeCashFlow, i) } }
   },
-  free_cash_flow_yield: {
-    label: 'FCF利回り', unit: '%', scaleType: 'linear',
-    hint: 'フリーキャッシュフロー ÷ 時価総額 × 100。キャッシュ生成力を時価総額で正規化した指標。',
-    variants: { actual: { label: '実績', compute: (f, i) => pickAt(f.freeCashFlowYield, i) } }
+  free_cash_flow_multiple: {
+    label: 'FCF倍率', unit: '倍', scaleType: 'log',
+    hint: '時価総額 ÷ フリーキャッシュフロー。PERのキャッシュフロー版で、値が小さいほどキャッシュ生成力に対して株価が割安。FCFがマイナスの期は算出できません。',
+    variants: {
+      actual: {
+        label: '実績',
+        compute: (f, i) => {
+          const cap = pickAt(f.marketCap, i);
+          const fcf = pickAt(f.freeCashFlow, i);
+          if (cap === null || fcf === null || fcf <= 0) return null;
+          return cap / fcf;
+        }
+      }
+    }
   },
   cash_and_equivalents: {
     label: '現金等', unit: '億円', scaleType: 'log',
@@ -317,7 +327,7 @@ const METRIC_GROUPS = [
     label: '財務健全性',
     keys: ['equity_ratio', 'dividend_yield', 'payout_ratio', 'net_cash_ratio', 'consecutive_dividend_increase_years']
   },
-  { label: 'キャッシュフロー', keys: ['free_cash_flow', 'free_cash_flow_yield', 'cash_and_equivalents'] },
+  { label: 'キャッシュフロー', keys: ['free_cash_flow', 'free_cash_flow_multiple', 'cash_and_equivalents'] },
   {
     label: '人的資本',
     keys: ['avg_annual_salary', 'net_income_per_employee', 'revenue_per_employee', 'female_director_ratio']
