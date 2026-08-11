@@ -148,10 +148,6 @@ def build_company_record(fin_payload, ratios_payload, earnings_payload, n_slots=
                 op_income[i] = op / 1e8
             if ni is not None:
                 net_income[i] = ni / 1e8
-            if fin.get("eps") is not None:
-                eps[i] = fin["eps"]
-            if fin.get("bps") is not None:
-                bps[i] = fin["bps"]
             if fin.get("cash") is not None:
                 cash_and_equivalents[i] = fin["cash"] / 1e8
             if fin.get("total_assets") is not None:
@@ -224,6 +220,25 @@ def build_company_record(fin_payload, ratios_payload, earnings_payload, n_slots=
                 op_income_cagr_3y[i] = rat["oi_cagr_3y"] * 100
             if rat.get("ni_cagr_3y") is not None:
                 net_income_cagr_3y[i] = rat["ni_cagr_3y"] * 100
+
+            # EPS/BPSはratios(15年分)のadjusted_eps/adjusted_bpsを主とする。
+            # financials(6年分)のeps/bpsは株式分割・併合の調整が入っていないため、
+            # 分割歴のある企業でPER×EPS逆算の株価パフォーマンスが暴落したように
+            # 見えるバグになる（分割前の期だけEPSが不自然に大きくなるため）。
+            if rat.get("adjusted_eps") is not None:
+                eps[i] = rat["adjusted_eps"]
+            elif rat.get("eps") is not None:
+                eps[i] = rat["eps"]
+            if rat.get("adjusted_bps") is not None:
+                bps[i] = rat["adjusted_bps"]
+            elif rat.get("bps") is not None:
+                bps[i] = rat["bps"]
+
+        # ratiosにEPS/BPSが無い期のみ、financials(未調整値)にフォールバックする。
+        if eps[i] is None and fin and fin.get("eps") is not None:
+            eps[i] = fin["eps"]
+        if bps[i] is None and fin and fin.get("bps") is not None:
+            bps[i] = fin["bps"]
 
         # ratiosにoperating_margin/net_marginが無い期は、financialsの実額から計算する。
         if operating_margin[i] is None and fin:
