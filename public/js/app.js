@@ -64,20 +64,35 @@
     return axis;
   }
 
+  // URLを短く保つため、既定値と一致するフィールドは省略する（例: 業種は「全部
+  // オン」が既定なので、それ自体ではなく「オフにした業種だけ」を記録する）。
   function buildStatePayload() {
-    return {
+    const payload = {
       ax: axisToPlain(state.axes.x),
       ay: axisToPlain(state.axes.y),
       az: axisToPlain(state.axes.z),
-      lx: state.logX, ly: state.logY, lz: state.logZ,
-      mk: state.market,
-      sc: [...state.activeSectors],
-      fx: [finiteOrNull(state.axisValueFilters.x.min), finiteOrNull(state.axisValueFilters.x.max)],
-      fy: [finiteOrNull(state.axisValueFilters.y.min), finiteOrNull(state.axisValueFilters.y.max)],
-      fz: [finiteOrNull(state.axisValueFilters.z.min), finiteOrNull(state.axisValueFilters.z.max)],
-      cf: state.customFilters.map((f) => ({ a: axisToPlain(f.axis), n: finiteOrNull(f.min), x: finiteOrNull(f.max) })),
-      kw: state.keyword
+      lx: state.logX, ly: state.logY, lz: state.logZ
     };
+    if (state.market !== 'all') payload.mk = state.market;
+
+    const loadedSectors = [...new Set(companies.map((c) => c.sector))];
+    const excludedSectors = loadedSectors.filter((s) => !state.activeSectors.has(s));
+    if (excludedSectors.length > 0) payload.xs = excludedSectors;
+
+    ['x', 'y', 'z'].forEach((k) => {
+      const f = state.axisValueFilters[k];
+      if (Number.isFinite(f.min) || Number.isFinite(f.max)) {
+        payload['f' + k] = [finiteOrNull(f.min), finiteOrNull(f.max)];
+      }
+    });
+
+    if (state.customFilters.length > 0) {
+      payload.cf = state.customFilters.map((f) => ({ a: axisToPlain(f.axis), n: finiteOrNull(f.min), x: finiteOrNull(f.max) }));
+    }
+
+    if (state.keyword) payload.kw = state.keyword;
+
+    return payload;
   }
 
   function finiteOrNull(n) {
@@ -138,13 +153,13 @@
     if (typeof payload.kw === 'string') state.keyword = payload.kw;
   }
 
-  // 業種フィルターは、読み込まれた企業に実在する業種のみへ絞って反映する。
+  // 業種フィルターは「オフにした業種」のリストとして共有されるため、読み込まれた
+  // 企業の全業種からそれらを除いたものを有効業種として復元する。
   function applyUrlSectorsAfterDataset(payload) {
-    if (!payload || !Array.isArray(payload.sc)) return;
-    const known = new Set(companies.map((c) => c.sector));
-    const restored = payload.sc.filter((s) => known.has(s));
-    if (restored.length === 0) return; // 復元できる業種が無ければ何もしない（全業種のまま）
-    state.activeSectors = new Set(restored);
+    if (!payload || !Array.isArray(payload.xs)) return; // 除外指定なし＝全業種オンのまま
+    const excluded = new Set(payload.xs);
+    const loadedSectors = [...new Set(companies.map((c) => c.sector))];
+    state.activeSectors = new Set(loadedSectors.filter((s) => !excluded.has(s)));
   }
 
   // ---------------- データセット切り替え ----------------
@@ -962,8 +977,12 @@
       openShareWindow(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`);
     });
     document.getElementById('share-line-btn').addEventListener('click', () => {
+      // 「LINEit」ボタン用のsocial-plugins.line.me/lineit/shareはOGPを共有先URLから
+      // クロールする方式でtextパラメータを無視することが多く、長いURLでは
+      // プレビュー取得自体に失敗しやすい。テキスト＋URLをそのままメッセージ本文に
+      // 渡せる公式のメッセージ送信URLスキームを使う。
       const { shareText = '', shareUrl = '' } = modal.dataset;
-      openShareWindow(`https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`);
+      openShareWindow(`https://line.me/R/msg/text/?${encodeURIComponent(`${shareText} ${shareUrl}`)}`);
     });
     document.getElementById('share-facebook-btn').addEventListener('click', () => {
       const { shareUrl = '' } = modal.dataset;
