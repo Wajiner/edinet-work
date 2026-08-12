@@ -46,6 +46,107 @@
   let manifest = null; // data/manifest.jsonの内容（ライブ取得に成功した場合のみ）
   let loadedMarkets = new Set(); // 遅延読み込み済みの市場区分名（例: '東証プライム'）
 
+  // ---------------- URL共有用の状態シリアライズ ----------------
+  // 軸・フィルターの設定をURLのクエリパラメータ(?v=...)に載せ、共有リンクを
+  // 開いた相手にも同じ画面（3軸・フィルター）が再現されるようにする。
+  // 個々の企業の非表示指定（右クリック等）は共有対象に含めない。
+  function axisToPlain(axis) {
+    return { m: axis.metric, v: axis.variant, o: axis.offset, f: axis.fromOffset, t: axis.toOffset };
+  }
+
+  function plainToAxis(p) {
+    if (!p || !METRIC_DEFS[p.m]) return null;
+    const axis = createAxis(p.m);
+    if (p.v && METRIC_DEFS[p.m].variants[p.v]) axis.variant = p.v;
+    if (Number.isInteger(p.o)) axis.offset = p.o;
+    if (Number.isInteger(p.f)) axis.fromOffset = p.f;
+    if (Number.isInteger(p.t)) axis.toOffset = p.t;
+    return axis;
+  }
+
+  function buildStatePayload() {
+    return {
+      ax: axisToPlain(state.axes.x),
+      ay: axisToPlain(state.axes.y),
+      az: axisToPlain(state.axes.z),
+      lx: state.logX, ly: state.logY, lz: state.logZ,
+      mk: state.market,
+      sc: [...state.activeSectors],
+      fx: [finiteOrNull(state.axisValueFilters.x.min), finiteOrNull(state.axisValueFilters.x.max)],
+      fy: [finiteOrNull(state.axisValueFilters.y.min), finiteOrNull(state.axisValueFilters.y.max)],
+      fz: [finiteOrNull(state.axisValueFilters.z.min), finiteOrNull(state.axisValueFilters.z.max)],
+      cf: state.customFilters.map((f) => ({ a: axisToPlain(f.axis), n: finiteOrNull(f.min), x: finiteOrNull(f.max) })),
+      kw: state.keyword
+    };
+  }
+
+  function finiteOrNull(n) {
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function numberOrInfinity(n, fallback) {
+    return typeof n === 'number' && Number.isFinite(n) ? n : fallback;
+  }
+
+  // 現在の軸・フィルター設定を反映した共有用URLを返す。
+  function buildShareUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('v', JSON.stringify(buildStatePayload()));
+    return url.toString();
+  }
+
+  function parseStateFromUrl() {
+    const raw = new URLSearchParams(window.location.search).get('v');
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // データセット読み込み前に反映できるもの（軸・対数・フィルター・市場・キーワード）。
+  // 業種フィルターはsetDataset()が読み込んだ企業に応じて上書きするため対象外
+  // （applyUrlSectorsAfterDatasetで別途、データセット読み込み後に反映する）。
+  function applyUrlStateBeforeDataset(payload) {
+    if (!payload) return;
+    const ax = plainToAxis(payload.ax); if (ax) state.axes.x = ax;
+    const ay = plainToAxis(payload.ay); if (ay) state.axes.y = ay;
+    const az = plainToAxis(payload.az); if (az) state.axes.z = az;
+    if (typeof payload.lx === 'boolean') state.logX = payload.lx;
+    if (typeof payload.ly === 'boolean') state.logY = payload.ly;
+    if (typeof payload.lz === 'boolean') state.logZ = payload.lz;
+    if (typeof payload.mk === 'string' && (payload.mk === 'all' || MARKET_OPTIONS.includes(payload.mk))) {
+      state.market = payload.mk;
+    }
+    ['x', 'y', 'z'].forEach((k) => {
+      const pair = payload['f' + k];
+      if (Array.isArray(pair) && pair.length === 2) {
+        state.axisValueFilters[k] = {
+          min: numberOrInfinity(pair[0], -Infinity),
+          max: numberOrInfinity(pair[1], Infinity)
+        };
+      }
+    });
+    if (Array.isArray(payload.cf)) {
+      state.customFilters = payload.cf.map((f) => {
+        const axis = plainToAxis(f.a);
+        if (!axis) return null;
+        return { axis, min: numberOrInfinity(f.n, -Infinity), max: numberOrInfinity(f.x, Infinity) };
+      }).filter(Boolean);
+    }
+    if (typeof payload.kw === 'string') state.keyword = payload.kw;
+  }
+
+  // 業種フィルターは、読み込まれた企業に実在する業種のみへ絞って反映する。
+  function applyUrlSectorsAfterDataset(payload) {
+    if (!payload || !Array.isArray(payload.sc)) return;
+    const known = new Set(companies.map((c) => c.sector));
+    const restored = payload.sc.filter((s) => known.has(s));
+    if (restored.length === 0) return; // 復元できる業種が無ければ何もしない（全業種のまま）
+    state.activeSectors = new Set(restored);
+  }
+
   // ---------------- データセット切り替え ----------------
   function setDataset(newCompanies, meta) {
     companies = newCompanies;
@@ -181,12 +282,15 @@
     const filter = state.axisValueFilters[axisKey];
     const minVal = filter.min === -Infinity ? '' : filter.min.toFixed(1);
     const maxVal = filter.max === Infinity ? '' : filter.max.toFixed(1);
+    const step = getInputStep(def.unit);
+    const unitLabel = def.unit ? ` ${def.unit}` : '';
     host.innerHTML = `
       <label class="text-[11px] font-semibold text-slate-500 mb-1 block">フィルター（${axisLabel(axis)}）</label>
       <div class="flex gap-2 items-center">
-        <input type="number" class="axis-value-min flex-1 px-2 py-1.5 text-xs border border-slate-300 rounded" data-axis="${axisKey}" placeholder="最小" value="${minVal}" step="0.1">
+        <input type="number" class="axis-value-min flex-1 px-2 py-1.5 text-xs border border-slate-300 rounded" data-axis="${axisKey}" placeholder="最小" value="${minVal}" step="${step}" title="${def.unit}">
         <span class="text-slate-400 text-xs">〜</span>
-        <input type="number" class="axis-value-max flex-1 px-2 py-1.5 text-xs border border-slate-300 rounded" data-axis="${axisKey}" placeholder="最大" value="${maxVal}" step="0.1">
+        <input type="number" class="axis-value-max flex-1 px-2 py-1.5 text-xs border border-slate-300 rounded" data-axis="${axisKey}" placeholder="最大" value="${maxVal}" step="${step}" title="${def.unit}">
+        ${unitLabel ? `<span class="text-slate-400 text-xs ml-1">${unitLabel}</span>` : ''}
       </div>`;
 
     host.querySelectorAll('.axis-value-min, .axis-value-max').forEach((input) => {
@@ -199,6 +303,14 @@
     });
   }
 
+  // 単位に応じた適切なステップを決定
+  function getInputStep(unit) {
+    if (!unit) return 0.1;
+    if (unit === '円') return 1;
+    if (unit === '%') return 0.1;
+    return 0.1;
+  }
+
   // 指標フィルター UI を描き直す。
   // 軸と同じく「種別（実績／会社予想）」「決算期」を個別に指定できるよう、
   // 各フィルターは軸と同じ形の axis オブジェクトを持つ（metrics.jsのcreateAxis参照）。
@@ -208,6 +320,10 @@
     const html = state.customFilters.map((f, idx) => {
       const minVal = f.min === -Infinity ? '' : f.min.toFixed(1);
       const maxVal = f.max === Infinity ? '' : f.max.toFixed(1);
+      const def = METRIC_DEFS[f.axis.metric];
+      const unit = def ? def.unit : '';
+      const step = getInputStep(unit);
+      const unitLabel = unit ? ` ${unit}` : '';
       return `
         <div class="custom-filter-group">
           <div class="custom-filter-header">
@@ -216,9 +332,10 @@
           </div>
           <div class="axis-sub custom-filter-sub" data-index="${idx}">${metricSubControlsHtml(f.axis)}</div>
           <div class="custom-filter-inputs">
-            <input type="number" class="custom-filter-min" data-index="${idx}" placeholder="最小" value="${minVal}" step="0.1">
+            <input type="number" class="custom-filter-min" data-index="${idx}" placeholder="最小" value="${minVal}" step="${step}" title="${unit}">
             <span class="dash">〜</span>
-            <input type="number" class="custom-filter-max" data-index="${idx}" placeholder="最大" value="${maxVal}" step="0.1">
+            <input type="number" class="custom-filter-max" data-index="${idx}" placeholder="最大" value="${maxVal}" step="${step}" title="${unit}">
+            ${unitLabel ? `<span class="unit-label">${unitLabel}</span>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -665,6 +782,9 @@
           </div>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
+          <button type="button" id="share-company-detail" class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-600 transition">
+            <i class="fa-solid fa-share-nodes"></i><span class="hidden sm:inline">共有</span>
+          </button>
           <button type="button" id="hide-company-detail" class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-600 transition">
             <i class="fa-solid fa-eye-slash"></i><span class="hidden sm:inline">この銘柄を非表示</span>
           </button>
@@ -752,6 +872,9 @@
   function bindCompanyDetailHeaderEvents(panel, company) {
     panel.querySelector('#close-company-detail').addEventListener('click', closeCompanyDetail);
     panel.querySelector('#hide-company-detail').addEventListener('click', () => hideCompany(company));
+    panel.querySelector('#share-company-detail').addEventListener('click', () => {
+      openShareModal(`${company.name}（${company.code}）の財務データを「日本株ユニバース -株式3Dビジュアライザー-」でチェック`, buildShareUrl());
+    });
   }
 
   function esc(s) {
@@ -807,6 +930,60 @@
     document.getElementById('hide-confirm-modal').addEventListener('click', (e) => {
       if (e.target.id === 'hide-confirm-modal') closeHideConfirm();
     });
+  }
+
+  // ---------------- 共有モーダル ----------------
+  // ヘッダーの「共有」ボタンと、企業詳細パネルの「共有」ボタンの両方から呼ぶ。
+  function openShareModal(text, url) {
+    const modal = document.getElementById('share-modal');
+    if (!modal) return;
+    document.getElementById('share-modal-subtitle').textContent = text;
+    document.getElementById('share-url-input').value = url;
+    modal.dataset.shareText = text;
+    modal.dataset.shareUrl = url;
+    showModal('share-modal');
+  }
+
+  function openShareWindow(shareUrl) {
+    const width = 600, height = 480;
+    const left = Math.max(0, Math.round((window.screen.width - width) / 2));
+    const top = Math.max(0, Math.round((window.screen.height - height) / 2));
+    const win = window.open(shareUrl, '_blank', `width=${width},height=${height},left=${left},top=${top}`);
+    if (win) win.opener = null;
+  }
+
+  function bindShareModalEvents() {
+    const modal = document.getElementById('share-modal');
+    document.getElementById('open-share-btn').addEventListener('click', () => {
+      openShareModal('日本株ユニバース -株式3Dビジュアライザー-｜3つの財務指標で日本株を3D可視化', buildShareUrl());
+    });
+    document.getElementById('share-x-btn').addEventListener('click', () => {
+      const { shareText = '', shareUrl = '' } = modal.dataset;
+      openShareWindow(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`);
+    });
+    document.getElementById('share-line-btn').addEventListener('click', () => {
+      const { shareText = '', shareUrl = '' } = modal.dataset;
+      openShareWindow(`https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`);
+    });
+    document.getElementById('share-facebook-btn').addEventListener('click', () => {
+      const { shareUrl = '' } = modal.dataset;
+      openShareWindow(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`);
+    });
+    document.getElementById('share-copy-btn').addEventListener('click', async () => {
+      const input = document.getElementById('share-url-input');
+      const btn = document.getElementById('share-copy-btn');
+      try {
+        await navigator.clipboard.writeText(input.value);
+      } catch (e) {
+        input.select();
+        document.execCommand('copy');
+      }
+      const original = btn.innerHTML;
+      btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i>コピー済み';
+      setTimeout(() => { btn.innerHTML = original; }, 1500);
+    });
+    document.getElementById('close-share-modal').addEventListener('click', () => hideModal('share-modal'));
+    modal.addEventListener('click', (e) => { if (e.target.id === 'share-modal') hideModal('share-modal'); });
   }
 
   function setLoading(show, text) {
@@ -912,15 +1089,22 @@
 
   // ---------------- 初期化実行 ----------------
   async function init() {
+    // 共有URL（?v=...）があれば軸・フィルター設定をデータ読み込み前に反映する。
+    const urlState = parseStateFromUrl();
+    applyUrlStateBeforeDataset(urlState);
+
     populateAxisSelects();
     // 対数スケールの初期状態をstateに合わせる（HTML側は全て未チェック）。
     AXIS_KEYS.forEach((k) => {
       document.getElementById(`axis-${k}-log`).checked = state['log' + k.toUpperCase()];
     });
     populateMarketSelect();
+    document.getElementById('market-select').value = state.market;
     populateCustomFilterMetricSelect();
+    document.getElementById('keyword-search').value = state.keyword;
     bindEvents();
     bindHideConfirmEvents();
+    bindShareModalEvents();
 
     // 起動時：data/manifest.json経由で東証プライムの実データをfetchする。
     // 未生成・ネットワークエラー等で取得できなければ埋め込みサンプルにフォールバックする。
@@ -928,6 +1112,17 @@
     const loaded = await loadLiveDataset();
     if (!loaded) {
       setDataset(DatasetStore.getSample(), DEFAULT_DATASET_META);
+    }
+
+    if (urlState) {
+      // setDataset()は業種フィルターを「読み込んだ企業の全業種」にリセットする
+      // ため、共有された業種指定はデータ読み込み完了後に上書きする。
+      // 市場を「全ての市場」以外で共有された場合は、その市場のデータを追加取得する。
+      if (state.market !== 'all') await ensureMarketLoaded(state.market);
+      applyUrlSectorsAfterDataset(urlState);
+      populateSectorFilter();
+      populateLegend();
+      refreshChart();
     }
     setLoading(false);
   }

@@ -56,6 +56,9 @@
       <span id="data-source-badge" class="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
         <i class="fa-solid fa-circle-check"></i> 実データ表示中
       </span>
+      <button id="open-share-btn" class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition">
+        <i class="fa-solid fa-share-nodes"></i><span class="hidden sm:inline">共有</span>
+      </button>
       <button id="open-guide-btn" class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition">
         <i class="fa-regular fa-circle-question"></i><span class="hidden sm:inline">使い方ガイド</span>
       </button>
@@ -206,6 +209,39 @@
     <div class="px-6 py-4 bg-slate-50 rounded-b-2xl flex justify-end gap-2">
       <button id="hide-confirm-cancel" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800">キャンセル</button>
       <button id="hide-confirm-ok" class="px-4 py-2 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg">非表示にする</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 共有モーダル ===================== -->
+<div id="share-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+  <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
+    <div class="px-6 py-5">
+      <h3 class="text-base font-bold text-slate-900 mb-1"><i class="fa-solid fa-share-nodes text-brand-600 mr-2"></i>共有する</h3>
+      <p id="share-modal-subtitle" class="text-xs text-slate-500 mb-4 truncate"></p>
+      <div class="grid grid-cols-3 gap-2 mb-4">
+        <button type="button" id="share-x-btn" class="flex flex-col items-center gap-1.5 py-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition">
+          <i class="fa-brands fa-x-twitter text-lg text-slate-800"></i>
+          <span class="text-[11px] font-semibold text-slate-600">X</span>
+        </button>
+        <button type="button" id="share-line-btn" class="flex flex-col items-center gap-1.5 py-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition">
+          <i class="fa-brands fa-line text-lg text-[#06C755]"></i>
+          <span class="text-[11px] font-semibold text-slate-600">LINE</span>
+        </button>
+        <button type="button" id="share-facebook-btn" class="flex flex-col items-center gap-1.5 py-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition">
+          <i class="fa-brands fa-facebook text-lg text-[#1877F2]"></i>
+          <span class="text-[11px] font-semibold text-slate-600">Facebook</span>
+        </button>
+      </div>
+      <div class="flex gap-2">
+        <input type="text" id="share-url-input" readonly class="flex-1 min-w-0 text-xs px-3 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-600">
+        <button type="button" id="share-copy-btn" class="shrink-0 text-xs font-semibold px-3 py-2 rounded-lg bg-brand-600 text-white hover:bg-brand-700 transition">
+          <i class="fa-regular fa-copy mr-1"></i>コピー
+        </button>
+      </div>
+    </div>
+    <div class="px-6 py-3 bg-slate-50 rounded-b-2xl flex justify-end">
+      <button type="button" id="close-share-modal" class="text-xs font-semibold px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 transition">閉じる</button>
     </div>
   </div>
 </div>
