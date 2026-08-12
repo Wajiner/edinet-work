@@ -31,6 +31,9 @@ toyota_financials.csv
 # インストーラー
 Claude Setup.exe
 
+# Tailwind CSSのビルドに使うスタンドアロンCLI（約38MB、各PCで取得する。README「CSSのビルド」参照）
+tools/
+
 # 一時ファイル
 *.zip
 .DS_Store

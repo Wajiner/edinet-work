@@ -53,7 +53,10 @@ wrangler.toml                      Cloudflare Workers（静的アサイン配信
 public/
   index.html                       メイン画面（ヘッダー、軸設定、チャート、注目企業、モーダル群）
   _headers                         Cloudflare向けキャッシュ設定（data/*.jsonにCache-Control付与）
-  css/style.css                    カスタムスタイル（Tailwind CSSと併用）
+  robots.txt / sitemap.xml         検索エンジン向け（クロール許可・サイトマップ）
+  og-image.png                     SNS共有時のプレビュー画像（generate_og_image.py で生成）
+  css/style.css                    カスタムスタイル（直接編集可・ビルド不要）
+  css/tailwind.css                 Tailwind CSSのビルド成果物（直接編集しない。「CSSのビルド」参照）
   js/data.js                       業種カラー定義・埋め込みサンプルデータ（実データ取得失敗時のフォールバック）
   js/metrics.js                    指標定義・期間指定に基づく値算出ロジック
   js/chart.js                      Plotly.js による3Dバブルチャート描画
@@ -68,7 +71,31 @@ edinetdb_build_dataset.py          edinetdb_cache/ → public/data/*.json を組
 edinetdb_cache/                    取得済みデータのキャッシュ（progress.json・raw/、git管理下で複数PC間共有）
 serve_nocache.py                   ローカル動作確認用の簡易サーバー（public/を配信）
 edinet_server.py                   （任意・ローカル専用）公式EDINET APIから企業概要を都度取得するプロキシ。後述。
+generate_og_image.py               public/og-image.png（SNS共有用画像）を生成するスクリプト
+tailwind.config.js                 Tailwind CSSのビルド設定（走査対象・テーマ拡張）
+tailwind.input.css                 Tailwind CSSのビルド入力（@tailwindディレクティブのみ）
+tools/tailwindcss.exe              Tailwind スタンドアロンCLI（git管理外。「CSSのビルド」参照）
 ```
+
+## CSSのビルド
+
+Tailwind CSSは以前 `cdn.tailwindcss.com`（ブラウザ上で毎回CSSを生成するPlay CDN）を読み込んでいましたが、公式に本番非推奨で表示速度にも影響するため、事前ビルドした `public/css/tailwind.css` を配信する方式に変更しました。
+
+**HTMLやJSでTailwindのクラスを追加・変更したら、再ビルドが必要です**（`public/css/style.css` の編集は再ビルド不要）。
+
+```bash
+./tools/tailwindcss.exe -i tailwind.input.css -o public/css/tailwind.css --minify
+```
+
+生成された `public/css/tailwind.css` はコミットしてください。Cloudflare側ではビルドを行わず `public/` をそのまま配信するため、コミットし忘れるとスタイルが古いままデプロイされます。
+
+`tools/tailwindcss.exe` はリポジトリに含めていない（約38MB）ため、新しいPCでは先に取得してください。Node.jsは不要です。
+
+```bash
+mkdir -p tools && curl -fL -o tools/tailwindcss.exe https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.19/tailwindcss-windows-x64.exe
+```
+
+`tailwind.config.js` の `content` に `public/index.html` と `public/js/**/*.js` を指定しているため、JS側の文字列として組み立てているクラス（企業詳細パネル・分析レポートなど）も走査対象に含まれます。クラス名を `"text-" + color` のように動的連結すると検出できずスタイルが欠落するため、クラス名は必ずリテラルで書いてください。
 
 ## データパイプライン（EDINET DB → 公開サイト）
 

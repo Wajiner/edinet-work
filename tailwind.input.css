@@ -1,0 +1,4 @@
+/* public/css/tailwind.css のビルド入力。編集後は README の手順で再ビルドすること。 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

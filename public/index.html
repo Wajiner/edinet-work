@@ -14,29 +14,56 @@
 <meta property="og:description" content="3つの財務指標の組み合わせによる日本株企業の分布を3D散布図で可視化するスクリーニングツール。EDINET DBの実データを使用。">
 <meta property="og:url" content="https://kabu3d.xyz/">
 <meta property="og:locale" content="ja_JP">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="https://kabu3d.xyz/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="株式3Dスクリーナー - 3つの財務指標で日本株の分布を3D可視化">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="株式3Dスクリーナー">
 <meta name="twitter:description" content="3つの財務指標の組み合わせによる日本株企業の分布を3D散布図で可視化するスクリーニングツール。EDINET DBの実データを使用。">
+<meta name="twitter:image" content="https://kabu3d.xyz/og-image.png">
+
+<!-- 構造化データ。検索結果でツールの性格（無料のWebアプリであること）が
+     伝わるよう WebApplication として記述する。 -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "株式3Dスクリーナー",
+  "url": "https://kabu3d.xyz/",
+  "description": "3つの財務指標の組み合わせによる日本株企業の分布を3D散布図で可視化するスクリーニングツール。EDINET DBの実データを使用。",
+  "applicationCategory": "FinanceApplication",
+  "operatingSystem": "Web",
+  "inLanguage": "ja",
+  "browserRequirements": "JavaScriptを有効にしたモダンブラウザ",
+  "screenshot": "https://kabu3d.xyz/og-image.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "JPY"
+  },
+  "featureList": [
+    "3つの財務指標を軸にした3D散布図スクリーニング",
+    "PER・PBR・ROE・ROIC・営業利益率など40種類以上の指標",
+    "市場区分・業種・指標値による絞り込み",
+    "銘柄ごとの財務データ推移の表示",
+    "軸とフィルターの設定を含めたURL共有"
+  ],
+  "isAccessibleForFree": true,
+  "creditText": "データ提供: EDINET DB"
+}
+</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
-<script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.30.0/plotly.min.js"></script>
 <link rel="stylesheet" href="css/style.css">
-
-<script>
-  tailwind.config = {
-    theme: {
-      extend: {
-        fontFamily: { sans: ['"Noto Sans JP"', 'sans-serif'] },
-        colors: {
-          brand: { 50:'#eef4ff',100:'#dbe7ff',500:'#3d6bf0',600:'#2f57d6',700:'#274aad' }
-        }
-      }
-    }
-  }
-</script>
+<!-- Tailwindはビルド済みCSSを読み込む（設定は tailwind.config.js、再ビルド手順はREADME参照）。
+     以前は cdn.tailwindcss.com でブラウザ上で毎回CSSを生成していたが、本番非推奨かつ
+     表示速度に影響するため事前ビルドへ移行した。style.cssより後に置くことで、
+     ユーティリティがカスタムスタイルより後に来る順序をCDN版と揃えている。 -->
+<link rel="stylesheet" href="css/tailwind.css">
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans">
 
