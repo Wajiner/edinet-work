@@ -47,117 +47,143 @@
   let loadedMarkets = new Set(); // 遅延読み込み済みの市場区分名（例: '東証プライム'）
 
   // ---------------- URL共有用の状態シリアライズ ----------------
-  // 軸・フィルターの設定をURLのクエリパラメータ(?v=...)に載せ、共有リンクを
-  // 開いた相手にも同じ画面（3軸・フィルター）が再現されるようにする。
+  // 軸・フィルターの設定を「x=op_margin」のような読みやすいクエリパラメータで
+  // URLに載せ、共有リンクを開いた相手にも同じ画面（3軸・フィルター）が再現
+  // されるようにする。JSONを1パラメータに詰めるとエンコードで長くなるため、
+  // 項目ごとに素のクエリパラメータへ分解し、既定値と一致するものは省略する。
   // 個々の企業の非表示指定（右クリック等）は共有対象に含めない。
-  function axisToPlain(axis) {
-    return { m: axis.metric, v: axis.variant, o: axis.offset, f: axis.fromOffset, t: axis.toOffset };
+  function defaultVariantFor(metricKey) {
+    return createAxis(metricKey).variant;
   }
 
-  function plainToAxis(p) {
-    if (!p || !METRIC_DEFS[p.m]) return null;
-    const axis = createAxis(p.m);
-    if (p.v && METRIC_DEFS[p.m].variants[p.v]) axis.variant = p.v;
-    if (Number.isInteger(p.o)) axis.offset = p.o;
-    if (Number.isInteger(p.f)) axis.fromOffset = p.f;
-    if (Number.isInteger(p.t)) axis.toOffset = p.t;
+  function axisToParams(prefix, axis, params) {
+    params.set(prefix, axis.metric);
+    if (axis.variant !== defaultVariantFor(axis.metric)) params.set(prefix + 'v', axis.variant);
+    if (axis.offset !== 0) params.set(prefix + 'o', String(axis.offset));
+    if (axis.fromOffset !== 1) params.set(prefix + 'f', String(axis.fromOffset));
+    if (axis.toOffset !== 0) params.set(prefix + 't', String(axis.toOffset));
+  }
+
+  function axisFromParams(prefix, params) {
+    const metric = params.get(prefix);
+    if (!metric || !METRIC_DEFS[metric]) return null;
+    const axis = createAxis(metric);
+    const v = params.get(prefix + 'v');
+    if (v && METRIC_DEFS[metric].variants[v]) axis.variant = v;
+    const o = Number(params.get(prefix + 'o'));
+    if (Number.isInteger(o)) axis.offset = o;
+    const f = Number(params.get(prefix + 'f'));
+    if (Number.isInteger(f)) axis.fromOffset = f;
+    const t = Number(params.get(prefix + 't'));
+    if (Number.isInteger(t)) axis.toOffset = t;
     return axis;
   }
 
-  // URLを短く保つため、既定値と一致するフィールドは省略する（例: 業種は「全部
-  // オン」が既定なので、それ自体ではなく「オフにした業種だけ」を記録する）。
-  function buildStatePayload() {
-    const payload = {
-      ax: axisToPlain(state.axes.x),
-      ay: axisToPlain(state.axes.y),
-      az: axisToPlain(state.axes.z),
-      lx: state.logX, ly: state.logY, lz: state.logZ
-    };
-    if (state.market !== 'all') payload.mk = state.market;
-
-    const loadedSectors = [...new Set(companies.map((c) => c.sector))];
-    const excludedSectors = loadedSectors.filter((s) => !state.activeSectors.has(s));
-    if (excludedSectors.length > 0) payload.xs = excludedSectors;
-
-    ['x', 'y', 'z'].forEach((k) => {
-      const f = state.axisValueFilters[k];
-      if (Number.isFinite(f.min) || Number.isFinite(f.max)) {
-        payload['f' + k] = [finiteOrNull(f.min), finiteOrNull(f.max)];
-      }
-    });
-
-    if (state.customFilters.length > 0) {
-      payload.cf = state.customFilters.map((f) => ({ a: axisToPlain(f.axis), n: finiteOrNull(f.min), x: finiteOrNull(f.max) }));
-    }
-
-    if (state.keyword) payload.kw = state.keyword;
-
-    return payload;
+  // 指標:種別:決算期:最小:最大 をコロン区切り、複数フィルターはパイプ区切りで
+  // 1つのクエリパラメータにまとめる（フィルター数は可変のため個別キーにしない）。
+  function serializeCustomFilters() {
+    if (state.customFilters.length === 0) return '';
+    return state.customFilters.map((f) => [
+      f.axis.metric,
+      f.axis.variant === defaultVariantFor(f.axis.metric) ? '' : f.axis.variant,
+      f.axis.offset === 0 ? '' : f.axis.offset,
+      Number.isFinite(f.min) ? f.min : '',
+      Number.isFinite(f.max) ? f.max : ''
+    ].join(':')).join('|');
   }
 
-  function finiteOrNull(n) {
-    return Number.isFinite(n) ? n : null;
-  }
-
-  function numberOrInfinity(n, fallback) {
-    return typeof n === 'number' && Number.isFinite(n) ? n : fallback;
+  function parseCustomFilters(raw) {
+    if (!raw) return [];
+    return raw.split('|').map((chunk) => {
+      const [metric, variant, offset, min, max] = chunk.split(':');
+      if (!metric || !METRIC_DEFS[metric]) return null;
+      const axis = createAxis(metric);
+      if (variant && METRIC_DEFS[metric].variants[variant]) axis.variant = variant;
+      if (offset && Number.isInteger(Number(offset))) axis.offset = Number(offset);
+      return {
+        axis,
+        min: min && Number.isFinite(Number(min)) ? Number(min) : -Infinity,
+        max: max && Number.isFinite(Number(max)) ? Number(max) : Infinity
+      };
+    }).filter(Boolean);
   }
 
   // 現在の軸・フィルター設定を反映した共有用URLを返す。
   function buildShareUrl() {
     const url = new URL(window.location.href);
-    url.searchParams.set('v', JSON.stringify(buildStatePayload()));
+    const params = new URLSearchParams(); // 既存のクエリパラメータは共有時に引き継がない
+
+    axisToParams('x', state.axes.x, params);
+    axisToParams('y', state.axes.y, params);
+    axisToParams('z', state.axes.z, params);
+
+    AXIS_KEYS.forEach((k) => {
+      const autoLog = METRIC_DEFS[state.axes[k].metric].scaleType === 'log';
+      const manualLog = state['log' + k.toUpperCase()];
+      if (manualLog !== autoLog) params.set('l' + k, manualLog ? '1' : '0');
+      const f = state.axisValueFilters[k];
+      if (Number.isFinite(f.min)) params.set(k + 'min', String(f.min));
+      if (Number.isFinite(f.max)) params.set(k + 'max', String(f.max));
+    });
+
+    if (state.market !== 'all') params.set('mk', state.market);
+
+    const loadedSectors = [...new Set(companies.map((c) => c.sector))];
+    const excludedSectors = loadedSectors.filter((s) => !state.activeSectors.has(s));
+    if (excludedSectors.length > 0) params.set('xs', excludedSectors.join(','));
+
+    const cf = serializeCustomFilters();
+    if (cf) params.set('cf', cf);
+
+    if (state.keyword) params.set('kw', state.keyword);
+
+    url.search = params.toString();
     return url.toString();
   }
 
   function parseStateFromUrl() {
-    const raw = new URLSearchParams(window.location.search).get('v');
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw);
-    } catch (e) {
-      return null;
-    }
+    if (!window.location.search) return null;
+    return new URLSearchParams(window.location.search);
   }
 
   // データセット読み込み前に反映できるもの（軸・対数・フィルター・市場・キーワード）。
   // 業種フィルターはsetDataset()が読み込んだ企業に応じて上書きするため対象外
   // （applyUrlSectorsAfterDatasetで別途、データセット読み込み後に反映する）。
-  function applyUrlStateBeforeDataset(payload) {
-    if (!payload) return;
-    const ax = plainToAxis(payload.ax); if (ax) state.axes.x = ax;
-    const ay = plainToAxis(payload.ay); if (ay) state.axes.y = ay;
-    const az = plainToAxis(payload.az); if (az) state.axes.z = az;
-    if (typeof payload.lx === 'boolean') state.logX = payload.lx;
-    if (typeof payload.ly === 'boolean') state.logY = payload.ly;
-    if (typeof payload.lz === 'boolean') state.logZ = payload.lz;
-    if (typeof payload.mk === 'string' && (payload.mk === 'all' || MARKET_OPTIONS.includes(payload.mk))) {
-      state.market = payload.mk;
-    }
-    ['x', 'y', 'z'].forEach((k) => {
-      const pair = payload['f' + k];
-      if (Array.isArray(pair) && pair.length === 2) {
-        state.axisValueFilters[k] = {
-          min: numberOrInfinity(pair[0], -Infinity),
-          max: numberOrInfinity(pair[1], Infinity)
-        };
-      }
+  function applyUrlStateBeforeDataset(params) {
+    if (!params) return;
+    const ax = axisFromParams('x', params); if (ax) state.axes.x = ax;
+    const ay = axisFromParams('y', params); if (ay) state.axes.y = ay;
+    const az = axisFromParams('z', params); if (az) state.axes.z = az;
+
+    AXIS_KEYS.forEach((k) => {
+      const l = params.get('l' + k);
+      state['log' + k.toUpperCase()] = (l === '1' || l === '0')
+        ? l === '1'
+        : METRIC_DEFS[state.axes[k].metric].scaleType === 'log';
+      const min = params.get(k + 'min');
+      const max = params.get(k + 'max');
+      state.axisValueFilters[k] = {
+        min: min !== null && Number.isFinite(Number(min)) ? Number(min) : -Infinity,
+        max: max !== null && Number.isFinite(Number(max)) ? Number(max) : Infinity
+      };
     });
-    if (Array.isArray(payload.cf)) {
-      state.customFilters = payload.cf.map((f) => {
-        const axis = plainToAxis(f.a);
-        if (!axis) return null;
-        return { axis, min: numberOrInfinity(f.n, -Infinity), max: numberOrInfinity(f.x, Infinity) };
-      }).filter(Boolean);
-    }
-    if (typeof payload.kw === 'string') state.keyword = payload.kw;
+
+    const mk = params.get('mk');
+    if (mk && (mk === 'all' || MARKET_OPTIONS.includes(mk))) state.market = mk;
+
+    state.customFilters = parseCustomFilters(params.get('cf'));
+
+    const kw = params.get('kw');
+    if (kw !== null) state.keyword = kw;
   }
 
   // 業種フィルターは「オフにした業種」のリストとして共有されるため、読み込まれた
   // 企業の全業種からそれらを除いたものを有効業種として復元する。
-  function applyUrlSectorsAfterDataset(payload) {
-    if (!payload || !Array.isArray(payload.xs)) return; // 除外指定なし＝全業種オンのまま
-    const excluded = new Set(payload.xs);
+  function applyUrlSectorsAfterDataset(params) {
+    if (!params) return;
+    const xs = params.get('xs');
+    if (xs === null) return; // 除外指定なし＝全業種オンのまま
+    const excluded = new Set(xs.split(',').filter(Boolean));
     const loadedSectors = [...new Set(companies.map((c) => c.sector))];
     state.activeSectors = new Set(loadedSectors.filter((s) => !excluded.has(s)));
   }
