@@ -914,7 +914,7 @@
     panel.querySelector('#close-company-detail').addEventListener('click', closeCompanyDetail);
     panel.querySelector('#hide-company-detail').addEventListener('click', () => hideCompany(company));
     panel.querySelector('#share-company-detail').addEventListener('click', () => {
-      openShareModal(`${company.name}（${company.code}）の財務データを「日本株ユニバース -株式3Dビジュアライザー-」でチェック`, buildShareUrl());
+      openShareModal(`${company.name}（${company.code}）の財務データを「株式3Dスクリーナー」でチェック`, buildShareUrl());
     });
   }
 
@@ -996,7 +996,7 @@
   function bindShareModalEvents() {
     const modal = document.getElementById('share-modal');
     document.getElementById('open-share-btn').addEventListener('click', () => {
-      openShareModal('日本株ユニバース -株式3Dビジュアライザー-｜3つの財務指標で日本株を3D可視化', buildShareUrl());
+      openShareModal('株式3Dスクリーナー｜3つの財務指標で日本株を3D可視化', buildShareUrl());
     });
     document.getElementById('share-x-btn').addEventListener('click', () => {
       const { shareText = '', shareUrl = '' } = modal.dataset;
